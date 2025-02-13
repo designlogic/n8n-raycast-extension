@@ -9,6 +9,7 @@ interface WorkflowItem {
   title: string;
   subtitle: string;
   accessory: string;
+  keywords: string[];
 }
 
 export default function Command() {
@@ -31,7 +32,8 @@ export default function Command() {
           icon: { source: "list-icon.svg" },
           title: item.name,
           subtitle: item.active ? "Active" : "Inactive",
-          accessory: item.tags.length > 0 ? item.tags : "No Tags",
+          accessory: item.tags.length > 0 ? item.tags.map((tag: any) => tag.name).join(", ") : "No Tags",
+          keywords: item.tags.length > 0 ? item.tags.map((tag: any) => tag.name) : [],
         }));
         
         // Store in cache
@@ -64,7 +66,7 @@ export default function Command() {
 
   return (
     <List
-      searchBarPlaceholder="Search workflows..."
+      searchBarPlaceholder="Search workflows by name or tags..."
       isLoading={isLoading}
       filtering={true}
       onSearchTextChange={setSearchText}
@@ -75,6 +77,7 @@ export default function Command() {
           icon={item.icon}
           title={item.title}
           accessories={[{ icon: Icon.Hashtag, text: item.accessory }]}
+          keywords={item.keywords}
           actions={
             <ActionPanel>
               <Action.OpenInBrowser url={`https://workflow.sanctifai.com/workflow/${item.id}`} />
