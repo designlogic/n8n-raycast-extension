@@ -18,7 +18,7 @@ export default function Command() {
   const [filteredItems, setFilteredItems] = useState<WorkflowItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  const CACHE_KEY = "workflows-cache";
+  const CACHE_KEY = "sanctifai.n8n.workflows.v1";
   const cache = new Cache();
 
   // Add this new function to sort items alphabetically
@@ -26,10 +26,10 @@ export default function Command() {
     return [...items].sort((a, b) => a.title.toLowerCase().localeCompare(b.title.toLowerCase()));
   };
 
-  // Update the filter function to maintain sorting
+  // Update the filter function to always sort results
   const filterItems = (items: WorkflowItem[], searchText: string) => {
     if (!searchText) {
-      return sortItems(items);
+      return sortItems(items); // Always sort, even when no search
     }
     
     const lowerSearchText = searchText.toLowerCase();
@@ -52,9 +52,36 @@ export default function Command() {
     setFilteredItems(filterItems(items, newSearchText));
   };
 
-  async function fetchData() {
-    setIsLoading(true);
+  // Function to clear cache
+  const clearCache = async () => {
+    await cache.remove(CACHE_KEY);
+    console.log("🧹 Cache cleared");
+  };
+
+  // Load data on component mount
+  useEffect(() => {
+    async function loadInitialData() {
+      const cachedData = await cache.get(CACHE_KEY);
+      
+      if (cachedData) {
+        console.log("📖 Loading data from cache");
+        const parsedData = JSON.parse(cachedData);
+        const sortedData = sortItems(parsedData);
+        setItems(sortedData);
+        setFilteredItems(sortedData); // Set initial filtered items to all items
+        setIsLoading(false);
+      } else {
+        console.log("❌ No cache found, fetching fresh data");
+        await fetchData(true);
+      }
+    }
+    loadInitialData();
+  }, []);
+
+  async function fetchData(forceFresh = false) {
+    setIsLoading(items.length === 0);
     console.log("🔄 Fetching fresh data from API...");
+    
     try {
       const response = await fetch("https://workflow.sanctifai.com/webhook/n8n/workflow");
       const data = await response.json();
@@ -71,7 +98,7 @@ export default function Command() {
         await cache.set(CACHE_KEY, JSON.stringify(formattedData));
         console.log("💾 Cache updated with fresh data");
         setItems(formattedData);
-        setFilteredItems(filterItems(formattedData, searchText));
+        setFilteredItems(formattedData); // Set filtered items to all items when fetching
       }
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -79,24 +106,6 @@ export default function Command() {
       setIsLoading(false);
     }
   }
-
-  // Update cache loading to use filtered items
-  useEffect(() => {
-    async function loadFromCache() {
-      const cachedData = await cache.get(CACHE_KEY);
-      if (cachedData) {
-        console.log("📖 Loading data from cache");
-        const parsedData = JSON.parse(cachedData);
-        setItems(parsedData);
-        setFilteredItems(filterItems(parsedData, searchText));
-        setIsLoading(false);
-      } else {
-        console.log("❌ No cache found, fetching fresh data");
-        await fetchData();
-      }
-    }
-    loadFromCache();
-  }, []);
 
   return (
     <List
@@ -118,8 +127,14 @@ export default function Command() {
               <Action 
                 title="Refresh Workflows" 
                 icon={Icon.RotateClockwise} 
-                onAction={fetchData}
+                onAction={() => fetchData(true)}
                 shortcut={{ modifiers: ["cmd"], key: "r" }}
+              />
+              <Action
+                title="Clear Cache"
+                icon={Icon.Trash}
+                onAction={clearCache}
+                shortcut={{ modifiers: ["cmd", "shift"], key: "r" }}
               />
             </ActionPanel>
           }
