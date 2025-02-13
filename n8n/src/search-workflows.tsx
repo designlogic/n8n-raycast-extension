@@ -1,4 +1,4 @@
-import { ActionPanel, Action, Icon, List, Cache } from "@raycast/api";
+import { ActionPanel, Action, Icon, List, Cache, getPreferenceValues } from "@raycast/api";
 import { useEffect, useState } from "react";
 import fetch from "node-fetch";
 
@@ -12,6 +12,11 @@ interface WorkflowItem {
   keywords: string[];
 }
 
+// Add interface for preferences
+interface Preferences {
+  apiKey: string;
+}
+
 export default function Command() {
   const [searchText, setSearchText] = useState("");
   const [items, setItems] = useState<WorkflowItem[]>([]);
@@ -20,6 +25,8 @@ export default function Command() {
 
   const CACHE_KEY = "sanctifai.n8n.workflows.v1";
   const cache = new Cache();
+
+  const preferences = getPreferenceValues<Preferences>();
 
   // Add this new function to sort items alphabetically
   const sortItems = (items: WorkflowItem[]): WorkflowItem[] => {
@@ -80,11 +87,24 @@ export default function Command() {
   }, []);
 
   async function fetchData(forceFresh = false) {
-    setIsLoading(true); // Always show loading when explicitly fetching
+    setIsLoading(true);
     console.log("🔄 Fetching fresh data from API...");
     
     try {
-      const response = await fetch("https://workflow.sanctifai.com/webhook/n8n/workflow");
+      const response = await fetch("https://workflow.sanctifai.com/webhook/n8n/workflow", {
+        headers: {
+          "X-N8N-API-KEY": preferences.apiKey
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error(
+          response.status === 401 
+            ? "Invalid API key. Please check your n8n API key in extension preferences." 
+            : `Failed to fetch workflows: ${response.statusText}`
+        );
+      }
+
       const data = await response.json();
       if (data && data.data) {
         const formattedData = sortItems(data.data.map((item: any) => ({
@@ -103,6 +123,7 @@ export default function Command() {
       }
     } catch (error) {
       console.error("Error fetching data:", error);
+      throw error;
     } finally {
       setIsLoading(false);
     }

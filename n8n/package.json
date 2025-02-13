@@ -9,6 +9,16 @@
     "Web"
   ],
   "license": "MIT",
+  "preferences": [
+    {
+      "name": "apiKey",
+      "type": "password",
+      "required": true,
+      "title": "n8n API Key",
+      "description": "Your n8n API key for authentication",
+      "placeholder": "Enter your n8n API key"
+    }
+  ],
   "commands": [
     {
       "name": "search-workflows",
