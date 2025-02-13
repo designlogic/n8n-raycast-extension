@@ -17,6 +17,14 @@
       "title": "n8n API Key",
       "description": "Your n8n API key for authentication",
       "placeholder": "Enter your n8n API key"
+    },
+    {
+      "name": "baseUrl",
+      "type": "textfield",
+      "required": true,
+      "title": "n8n Base URL",
+      "description": "Your n8n instance URL (e.g., https://n8n.example.com)",
+      "placeholder": "https://n8n.example.com"
     }
   ],
   "commands": [

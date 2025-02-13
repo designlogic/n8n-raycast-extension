@@ -9,6 +9,7 @@ export interface WorkflowItem {
 
 export interface Preferences {
   apiKey: string;
+  baseUrl: string;
 }
 
 export interface WorkflowResponse {

@@ -2,11 +2,8 @@ import { ActionPanel, Action, Icon, List, Cache, getPreferenceValues } from "@ra
 import { useEffect, useState } from "react";
 import fetch from "node-fetch";
 import { WorkflowItem, Preferences, WorkflowResponse } from "./types";
-import { CACHE_KEY, API_ENDPOINTS } from "./config";
+import { CACHE_KEY, API_ENDPOINTS, getApiEndpoints } from "./config";
 import { sortAlphabetically, formatWorkflowData, filterItems } from "./utils";
-
-// Constants
-const API_BASE_URL = "https://workflow.sanctifai.com";
 
 // Main Component
 export default function Command() {
@@ -18,9 +15,12 @@ export default function Command() {
 
   const cache = new Cache();
   const preferences = getPreferenceValues<Preferences>();
+  const API_ENDPOINTS = getApiEndpoints(preferences.baseUrl);
 
   // API Functions
   const fetchWorkflows = async () => {
+    console.log(`🌐 Fetching from URL: ${API_ENDPOINTS.workflows}`);
+    
     const response = await fetch(API_ENDPOINTS.workflows, {
       headers: {
         "X-N8N-API-KEY": preferences.apiKey,
