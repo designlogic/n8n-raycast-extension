@@ -31,7 +31,7 @@ export default function Command() {
           icon: { source: "list-icon.svg" },
           title: item.name,
           subtitle: item.active ? "Active" : "Inactive",
-          accessory: item.tags.length > 0 ? item.tags.map((tag: any) => tag.name).join(", ") : "No Tags",
+          accessory: item.tags.length > 0 ? item.tags : "No Tags",
         }));
         
         // Store in cache
@@ -74,12 +74,11 @@ export default function Command() {
           key={item.id}
           icon={item.icon}
           title={item.title}
-          subtitle={item.subtitle}
           accessories={[{ icon: Icon.Hashtag, text: item.accessory }]}
           actions={
             <ActionPanel>
               <Action.OpenInBrowser url={`https://workflow.sanctifai.com/workflow/${item.id}`} />
-              <Action.CopyToClipboard content={item.title} />
+              <Action.CopyToClipboard title="Copy Workflow URL" content={`https://workflow.sanctifai.com/workflow/${item.id}`} />
               <Action 
                 title="Refresh Workflows" 
                 icon={Icon.RotateClockwise} 
