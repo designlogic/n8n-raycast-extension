@@ -3,7 +3,7 @@
   "name": "n8n",
   "title": "n8n",
   "description": "n8n Workflow launcher",
-  "icon": "extension-icon.png",
+  "icon": "n8n.png",
   "author": "DesignLogicSolutions",
   "categories": [
     "Web"
