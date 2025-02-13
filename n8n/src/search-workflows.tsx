@@ -91,9 +91,10 @@ export default function Command() {
     console.log("🔄 Fetching fresh data from API...");
     
     try {
-      const response = await fetch("https://workflow.sanctifai.com/webhook/n8n/workflow", {
+      const response = await fetch("https://workflow.sanctifai.com/api/v1/workflows", {
         headers: {
-          "X-N8N-API-KEY": preferences.apiKey
+          "X-N8N-API-KEY": preferences.apiKey,
+          "Accept": "application/json"
         }
       });
       
@@ -106,20 +107,30 @@ export default function Command() {
       }
 
       const data = await response.json();
-      if (data && data.data) {
-        const formattedData = sortItems(data.data.map((item: any) => ({
-          id: item.id,
+      
+      // Check if data is in the expected format
+      const workflows = Array.isArray(data) ? data : data.data;
+      
+      if (workflows && Array.isArray(workflows)) {
+        const formattedData = sortItems(workflows.map((workflow: any) => ({
+          id: workflow.id,
           icon: { source: "list-icon.svg" },
-          title: item.name,
-          subtitle: item.active ? "Active" : "Inactive",
-          accessory: item.tags.length > 0 ? item.tags.map((tag: any) => tag.name).join(", ") : "No Tags",
-          keywords: item.tags.length > 0 ? item.tags.map((tag: any) => tag.name) : [],
+          title: workflow.name,
+          subtitle: workflow.active ? "Active" : "Inactive",
+          accessory: workflow.tags && workflow.tags.length > 0 
+            ? workflow.tags.map((tag: any) => tag.name).join(", ") 
+            : "No Tags",
+          keywords: workflow.tags && workflow.tags.length > 0 
+            ? workflow.tags.map((tag: any) => tag.name) 
+            : [],
         })));
         
         await cache.set(CACHE_KEY, JSON.stringify(formattedData));
         console.log("💾 Cache updated with fresh data");
         setItems(formattedData);
         setFilteredItems(formattedData);
+      } else {
+        throw new Error("Invalid response format from API");
       }
     } catch (error) {
       console.error("Error fetching data:", error);
