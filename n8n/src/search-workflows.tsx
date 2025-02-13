@@ -52,10 +52,11 @@ export default function Command() {
     setFilteredItems(filterItems(items, newSearchText));
   };
 
-  // Function to clear cache
+  // Function to clear cache and reload
   const clearCache = async () => {
     await cache.remove(CACHE_KEY);
     console.log("🧹 Cache cleared");
+    await fetchData(true); // Force fetch after clearing cache
   };
 
   // Load data on component mount
@@ -79,7 +80,7 @@ export default function Command() {
   }, []);
 
   async function fetchData(forceFresh = false) {
-    setIsLoading(items.length === 0);
+    setIsLoading(true); // Always show loading when explicitly fetching
     console.log("🔄 Fetching fresh data from API...");
     
     try {
@@ -98,7 +99,7 @@ export default function Command() {
         await cache.set(CACHE_KEY, JSON.stringify(formattedData));
         console.log("💾 Cache updated with fresh data");
         setItems(formattedData);
-        setFilteredItems(formattedData); // Set filtered items to all items when fetching
+        setFilteredItems(formattedData);
       }
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -129,12 +130,6 @@ export default function Command() {
                 icon={Icon.RotateClockwise} 
                 onAction={() => fetchData(true)}
                 shortcut={{ modifiers: ["cmd"], key: "r" }}
-              />
-              <Action
-                title="Clear Cache"
-                icon={Icon.Trash}
-                onAction={clearCache}
-                shortcut={{ modifiers: ["cmd", "shift"], key: "r" }}
               />
             </ActionPanel>
           }
