@@ -33,6 +33,26 @@
       "title": "Search Workflows",
       "description": "Search Workflows",
       "mode": "view"
+    },
+    {
+      "name": "create-workflow",
+      "title": "Create Workflow",
+      "description": "Create a new n8n workflow",
+      "mode": "view",
+      "arguments": [
+        {
+          "name": "name",
+          "placeholder": "Workflow Name",
+          "type": "text",
+          "required": true
+        },
+        {
+          "name": "tags",
+          "placeholder": "Tags (comma separated)",
+          "type": "text",
+          "required": false
+        }
+      ]
     }
   ],
   "dependencies": {
