@@ -13,16 +13,23 @@ export const formatWorkflowData = (workflow: WorkflowResponse["data"][0]): Workf
   keywords: workflow.tags?.length > 0 ? workflow.tags.map(tag => tag.name) : [],
 });
 
-export const filterItems = (items: WorkflowItem[], searchText: string) => {
-  if (!searchText) return sortAlphabetically(items);
+export const filterItems = (
+  items: WorkflowItem[], 
+  searchText: string,
+  selectedTag: string | null
+) => {
+  if (!searchText && !selectedTag) return sortAlphabetically(items);
   
   const lowerSearchText = searchText.toLowerCase();
   const filtered = items.filter((item) => {
-    const titleMatch = item.title.toLowerCase().includes(lowerSearchText);
-    const tagMatch = item.keywords.some(tag => 
-      tag.toLowerCase().includes(lowerSearchText)
-    );
-    return titleMatch || tagMatch;
+    const matchesSearch = !searchText || 
+      item.title.toLowerCase().includes(lowerSearchText) ||
+      item.keywords.some(tag => tag.toLowerCase().includes(lowerSearchText));
+      
+    const matchesTag = !selectedTag || 
+      item.keywords.includes(selectedTag);
+
+    return matchesSearch && matchesTag;
   });
 
   return sortAlphabetically(filtered);

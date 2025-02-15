@@ -45,12 +45,6 @@
           "placeholder": "Workflow Name",
           "type": "text",
           "required": true
-        },
-        {
-          "name": "tags",
-          "placeholder": "Tags (comma separated)",
-          "type": "text",
-          "required": false
         }
       ]
     }

@@ -2,20 +2,22 @@ import { ActionPanel, Action, Icon, List, Cache, getPreferenceValues } from "@ra
 import { useEffect, useState } from "react";
 import fetch from "node-fetch";
 import { WorkflowItem, Preferences, WorkflowResponse } from "./types";
-import { CACHE_KEY, API_ENDPOINTS, getApiEndpoints } from "./config";
+import { CACHE_KEY, getApiEndpoints } from "./config";
 import { sortAlphabetically, formatWorkflowData, filterItems } from "./utils";
 
 // Main Component
 export default function Command() {
   // State
-  const [searchText, setSearchText] = useState("");
   const [items, setItems] = useState<WorkflowItem[]>([]);
-  const [filteredItems, setFilteredItems] = useState<WorkflowItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
 
   const cache = new Cache();
   const preferences = getPreferenceValues<Preferences>();
   const API_ENDPOINTS = getApiEndpoints(preferences.baseUrl);
+
+  // Get unique tags from workflow items
+  const availableTags = [...new Set(items.flatMap(item => item.keywords))].sort();
 
   // API Functions
   const fetchWorkflows = async () => {
@@ -43,7 +45,6 @@ export default function Command() {
   const updateWorkflowData = async (workflows: WorkflowItem[]) => {
     await cache.set(CACHE_KEY, JSON.stringify(workflows));
     setItems(workflows);
-    setFilteredItems(workflows);
   };
 
   const fetchData = async (forceFresh = false) => {
@@ -70,15 +71,8 @@ export default function Command() {
   };
 
   // Event Handlers
-  const handleSearchTextChange = (newSearchText: string) => {
-    setSearchText(newSearchText);
-    setFilteredItems(filterItems(items, newSearchText));
-  };
-
-  const handleClearCache = async () => {
-    await cache.remove(CACHE_KEY);
-    console.log("🧹 Cache cleared");
-    await fetchData(true);
+  const handleTagChange = (newTag: string | null) => {
+    setSelectedTag(newTag);
   };
 
   // Initial Load
@@ -91,7 +85,6 @@ export default function Command() {
         const parsedData = JSON.parse(cachedData);
         const sortedData = sortAlphabetically(parsedData);
         setItems(sortedData);
-        setFilteredItems(sortedData);
         setIsLoading(false);
       } else {
         console.log("❌ No cache found, fetching fresh data");
@@ -106,32 +99,51 @@ export default function Command() {
     <List
       searchBarPlaceholder="Search workflows by name or tags..."
       isLoading={isLoading}
-      filtering={false}
-      onSearchTextChange={handleSearchTextChange}
+      filtering={true}
+      searchBarAccessory={
+        <List.Dropdown
+          tooltip="Filter by Tag"
+          value={selectedTag || ""}
+          onChange={handleTagChange}
+        >
+          <List.Dropdown.Item title="All Tags" value="" />
+          {availableTags.map((tag) => (
+            <List.Dropdown.Item
+              key={tag}
+              title={tag}
+              value={tag}
+              icon={Icon.Tag}
+            />
+          ))}
+        </List.Dropdown>
+      }
     >
-      {filteredItems.map((item) => (
-        <List.Item
-          key={item.id}
-          icon={item.icon}
-          title={item.title}
-          accessories={[{ icon: Icon.Hashtag, text: item.accessory }]}
-          actions={
-            <ActionPanel>
-              <Action.OpenInBrowser url={API_ENDPOINTS.workflowUrl(item.id)} />
-              <Action.CopyToClipboard 
-                title="Copy Workflow URL" 
-                content={API_ENDPOINTS.workflowUrl(item.id)} 
-              />
-              <Action 
-                title="Refresh Workflows" 
-                icon={Icon.RotateClockwise} 
-                onAction={() => fetchData(true)}
-                shortcut={{ modifiers: ["cmd"], key: "r" }}
-              />
-            </ActionPanel>
-          }
-        />
-      ))}
+      {items
+        .filter(item => !selectedTag || item.keywords.includes(selectedTag))
+        .map((item) => (
+          <List.Item
+            key={item.id}
+            icon={item.icon}
+            title={item.title}
+            keywords={item.keywords}
+            accessories={[{ icon: Icon.Hashtag, text: item.accessory }]}
+            actions={
+              <ActionPanel>
+                <Action.OpenInBrowser url={API_ENDPOINTS.workflowUrl(item.id)} />
+                <Action.CopyToClipboard 
+                  title="Copy Workflow URL" 
+                  content={API_ENDPOINTS.workflowUrl(item.id)} 
+                />
+                <Action 
+                  title="Refresh Workflows" 
+                  icon={Icon.RotateClockwise} 
+                  onAction={() => fetchData(true)}
+                  shortcut={{ modifiers: ["cmd"], key: "r" }}
+                />
+              </ActionPanel>
+            }
+          />
+        ))}
     </List>
   );
 }
