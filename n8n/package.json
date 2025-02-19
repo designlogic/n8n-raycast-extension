@@ -38,7 +38,7 @@
       "name": "create-workflow",
       "title": "Create Workflow",
       "description": "Create a new n8n workflow",
-      "mode": "view",
+      "mode": "no-view",
       "arguments": [
         {
           "name": "name",

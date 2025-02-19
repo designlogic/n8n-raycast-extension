@@ -1,4 +1,4 @@
-import { ActionPanel, Action, Icon, List, Cache, getPreferenceValues } from "@raycast/api";
+import { ActionPanel, Action, Icon, List, Cache, getPreferenceValues, showToast, Toast } from "@raycast/api";
 import { useEffect, useState } from "react";
 import fetch from "node-fetch";
 import { WorkflowItem, Preferences, WorkflowResponse } from "./types";
@@ -21,24 +21,37 @@ export default function Command() {
 
   // API Functions
   const fetchWorkflows = async () => {
-    console.log(`🌐 Fetching from URL: ${API_ENDPOINTS.workflows}`);
-    
-    const response = await fetch(API_ENDPOINTS.workflows, {
-      headers: {
-        "X-N8N-API-KEY": preferences.apiKey,
-        "Accept": "application/json"
+    let allWorkflows: WorkflowResponse['data'] = [];
+    let cursor: string | undefined;
+    const limit = 250;
+
+    do {
+      const url = cursor
+        ? `${API_ENDPOINTS.workflows}?limit=${limit}&cursor=${cursor}`
+        : `${API_ENDPOINTS.workflows}?limit=${limit}`;
+      
+      const response = await fetch(url, {
+        headers: {
+          "X-N8N-API-KEY": preferences.apiKey,
+          "Accept": "application/json"
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(
+          response.status === 401 
+            ? "Invalid API key. Please check your n8n API key in extension preferences." 
+            : `Failed to fetch workflows: ${response.statusText}`
+        );
       }
-    });
 
-    if (!response.ok) {
-      throw new Error(
-        response.status === 401 
-          ? "Invalid API key. Please check your n8n API key in extension preferences." 
-          : `Failed to fetch workflows: ${response.statusText}`
-      );
-    }
+      const data = JSON.parse(await response.text()) as { data: WorkflowResponse['data']; nextCursor?: string };
+      allWorkflows = [...allWorkflows, ...(data.data || [])];
+      cursor = data.nextCursor;
 
-    return response.json() as Promise<WorkflowResponse>;
+    } while (cursor);
+
+    return { data: allWorkflows } as WorkflowResponse;
   };
 
   // Data Management Functions
@@ -58,7 +71,14 @@ export default function Command() {
       if (workflows && Array.isArray(workflows)) {
         const formattedData = sortAlphabetically(workflows.map(formatWorkflowData));
         await updateWorkflowData(formattedData);
-        console.log("💾 Cache updated with fresh data");
+        
+        if (forceFresh) {
+          await showToast({
+            style: Toast.Style.Success,
+            title: "Workflows Refreshed",
+            message: `Found ${formattedData.length} workflows`
+          });
+        }
       } else {
         throw new Error("Invalid response format from API");
       }
