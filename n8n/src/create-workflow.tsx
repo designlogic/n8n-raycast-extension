@@ -1,7 +1,7 @@
-import { showToast, Toast, getPreferenceValues, openCommandPreferences, open } from "@raycast/api";
+import { showToast, Toast, getPreferenceValues, openCommandPreferences, open, Cache } from "@raycast/api";
 import fetch from "node-fetch";
 import { Preferences } from "./types";
-import { getApiEndpoints } from "./config";
+import { getApiEndpoints, CACHE_KEY } from "./config";
 
 interface CreateWorkflowArguments {
   name?: string;
@@ -10,6 +10,7 @@ interface CreateWorkflowArguments {
 export default async function Command(props: { arguments: CreateWorkflowArguments }) {
   const preferences = getPreferenceValues<Preferences>();
   const API_ENDPOINTS = getApiEndpoints(preferences.baseUrl);
+  const cache = new Cache();
 
   if (!props.arguments.name) {
     await showToast({
@@ -62,6 +63,9 @@ export default async function Command(props: { arguments: CreateWorkflowArgument
     }
 
     const data = JSON.parse(responseText) as { id: string };
+
+    // Clear the cache so the new workflow shows up in search
+    await cache.remove(CACHE_KEY);
 
     toast.style = Toast.Style.Success;
     toast.title = "Workflow created";
