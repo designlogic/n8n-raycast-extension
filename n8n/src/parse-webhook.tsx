@@ -107,6 +107,16 @@ export default function Command() {
           stack: error.stack,
           type: error.constructor.name 
         });
+        
+        // Show a helpful message if it's a permissions error
+        if (error.message.includes("Unable to get selected text")) {
+          showToast({
+            style: Toast.Style.Failure,
+            title: "Permission Required",
+            message: "Please grant Accessibility permission to Raycast in System Settings → Privacy & Security → Accessibility",
+          });
+        }
+        
         setWebhookJson("");
       });
   }, []);
