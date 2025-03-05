@@ -88,6 +88,15 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
   return {
     nodes: [webhookNode],
     connections: {},
+    pinData: {
+      "Webhook": [
+        {
+          body: curlData.body ? JSON.parse(curlData.body) : {},
+          webhookUrl: curlData.url,
+          executionMode: "test"
+        }
+      ]
+    }
   };
 }
 
