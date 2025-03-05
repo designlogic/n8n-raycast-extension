@@ -1,4 +1,4 @@
-import { showToast, Toast, Clipboard, Form, ActionPanel, Action, getSelectedText } from "@raycast/api";
+import { showToast, Toast, Clipboard, Form, ActionPanel, Action } from "@raycast/api";
 import { useState, useEffect } from "react";
 
 interface WebhookNode {
@@ -63,69 +63,25 @@ export default function Command() {
 
   useEffect(() => {
     const init = async () => {
-      console.log("Command initialized");
       try {
-        console.log("Starting getSelectedText...");
-        const text = await getSelectedText();
-        console.log("getSelectedText completed:", { text, length: text?.length, type: typeof text });
-        
-        // If no text is selected or text is empty, just return
-        if (!text?.trim()) {
-          console.log("No text selected or empty text, returning...");
-          return;
-        }
-
-        try {
-          const trimmed = text.trim();
-          console.log("Trimmed text:", { trimmed, length: trimmed.length });
-          
-          if (trimmed.startsWith('{')) {
-            console.log("Text starts with {, attempting to parse as JSON...");
-            // Test if it's valid JSON
-            const parsed = JSON.parse(trimmed);
-            console.log("Successfully parsed JSON:", { nodeCount: parsed.nodes?.length });
-            setWebhookJson(trimmed);
-          } else {
-            console.log("Text doesn't start with {, ignoring...");
+        const text = await Clipboard.readText();
+        if (text?.trim() && text.trim().startsWith('{')) {
+          try {
+            // Validate it's proper JSON
+            JSON.parse(text.trim());
+            setWebhookJson(text.trim());
+          } catch (e) {
+            // Invalid JSON, leave input empty
+            console.log("Clipboard content is not valid JSON");
           }
-        } catch (e: unknown) {
-          // Any error, default to empty input
-          const error = e as Error;
-          console.error("Error processing selected text:", { 
-            error,
-            message: error.message, 
-            stack: error.stack 
-          });
-          setWebhookJson("");
         }
-      } catch (e: unknown) {
-        const error = e as Error;
-        console.error("Failed to get selected text:", {
-          error,
-          message: error.message,
-          stack: error.stack,
-          type: error.constructor.name
-        });
-
-        // Show a helpful message if it's a permissions error
-        if (error.message.includes("Unable to get selected text")) {
-          await showToast({
-            style: Toast.Style.Failure,
-            title: "⚠️ Permission Required",
-            message: "Please grant Accessibility permission to Raycast in System Settings → Privacy & Security → Accessibility",
-          });
-        }
-        setWebhookJson("");
+      } catch (e) {
+        // Error reading clipboard, leave input empty
+        console.log("Could not read clipboard");
       }
     };
 
-    // Show initial toast to indicate we're checking for selected text
-    showToast({
-      style: Toast.Style.Animated,
-      title: "Checking for selected text...",
-    });
-
-    init().catch(console.error);
+    init();
   }, []);
 
   const handleSubmit = async () => {
