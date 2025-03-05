@@ -53,13 +53,18 @@
       "title": "Create Webhook",
       "description": "Convert curl command to n8n webhook JSON",
       "mode": "view",
-      "keywords": ["curl", "webhook", "n8n"]
+      "keywords": [
+        "curl",
+        "webhook",
+        "n8n"
+      ]
     }
   ],
   "dependencies": {
     "@raycast/api": "^1.91.2",
     "@raycast/utils": "^1.17.0",
     "node-fetch": "^3.3.2",
+    "parse-curl": "^0.2.6",
     "uuid": "^9.0.0"
   },
   "devDependencies": {
