@@ -1,6 +1,6 @@
 import { showToast, Toast, Clipboard, Form, ActionPanel, Action } from "@raycast/api";
 import { v4 as uuidv4 } from 'uuid';
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import parseCurl from 'parse-curl';
 import { sentenceCase } from "change-case";
 
@@ -87,6 +87,30 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
 
 export default function Command() {
   const [curlCommand, setCurlCommand] = useState("");
+
+  useEffect(() => {
+    const initClipboard = async () => {
+      try {
+        const text = await Clipboard.readText();
+        if (text && text.trim().startsWith('{')) {
+          const jsonData = JSON.parse(text.trim()) as WebhookJson;
+          if (jsonData.pinData) {
+            const nodeData = Object.values(jsonData.pinData)[0];
+            if (Array.isArray(nodeData) && nodeData[0]?.webhookUrl) {
+              const method = jsonData.nodes?.[0]?.parameters?.httpMethod || 'GET';
+              const body = nodeData[0].body ? JSON.stringify(nodeData[0].body) : '';
+              const curlCmd = `curl -X ${method} "${nodeData[0].webhookUrl}"${body ? ` -d '${body}'` : ''}`;
+              setCurlCommand(curlCmd);
+            }
+          }
+        }
+      } catch (error) {
+        // Silently handle errors - we'll just leave the input empty
+      }
+    };
+    
+    initClipboard();
+  }, []);
 
   const handleSubmit = async () => {
     try {
