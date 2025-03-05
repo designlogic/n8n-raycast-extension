@@ -1,4 +1,4 @@
-import { showToast, Toast, Clipboard, Form, ActionPanel, Action } from "@raycast/api";
+import { showToast, Toast, Clipboard, Form, ActionPanel, Action, getSelectedText } from "@raycast/api";
 import { useState, useEffect } from "react";
 
 interface WebhookNode {
@@ -59,35 +59,39 @@ function generateCurlCommand(webhookJson: WebhookJson): string {
 }
 
 export default function Command() {
-  const [webhookJson, setWebhookJson] = useState("");
+  const [jsonInput, setJsonInput] = useState("");
 
   useEffect(() => {
     const init = async () => {
+      let text = "";
+      
+      // Try selected text first
       try {
-        const text = await Clipboard.readText();
-        if (text?.trim() && text.trim().startsWith('{')) {
-          try {
-            // Validate it's proper JSON
-            JSON.parse(text.trim());
-            setWebhookJson(text.trim());
-          } catch (e) {
-            // Invalid JSON, leave input empty
-            console.log("Clipboard content is not valid JSON");
-          }
+        text = await getSelectedText();
+      } catch (error) {
+        // If selected text fails, try clipboard
+        try {
+          text = await Clipboard.readText() || "";
+        } catch (error) {
+          // If both fail, leave input empty
+          return;
         }
-      } catch (e) {
-        // Error reading clipboard, leave input empty
-        console.log("Could not read clipboard");
+      }
+      
+      // Check if text starts with '{'
+      const trimmedText = text.trim();
+      if (trimmedText.startsWith('{')) {
+        setJsonInput(trimmedText);
       }
     };
-
+    
     init();
   }, []);
 
   const handleSubmit = async () => {
     try {
       console.log("Handling submit...");
-      const trimmedJson = webhookJson.trim();
+      const trimmedJson = jsonInput.trim();
       console.log("Trimmed JSON length:", trimmedJson.length);
       
       const parsedJson = JSON.parse(trimmedJson) as WebhookJson;
@@ -134,8 +138,8 @@ export default function Command() {
         id="webhook"
         title="Webhook JSON"
         placeholder="Paste your webhook JSON here..."
-        value={webhookJson}
-        onChange={setWebhookJson}
+        value={jsonInput}
+        onChange={setJsonInput}
       />
     </Form>
   );
