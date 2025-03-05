@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import fetch from "node-fetch";
 import { WorkflowItem, Preferences, WorkflowResponse } from "./types";
 import { CACHE_KEY, getApiEndpoints } from "./config";
-import { sortAlphabetically, formatWorkflowData, filterItems } from "./utils";
+import { sortAlphabetically, formatWorkflowData } from "./utils";
 
 // Main Component
 export default function Command() {

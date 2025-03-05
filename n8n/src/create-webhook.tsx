@@ -6,9 +6,6 @@ interface WebhookNode {
   parameters: {
     httpMethod: string;
     path: string;
-    options: {
-      rawBody: boolean;
-    };
   };
   type: string;
   typeVersion: number;
@@ -56,7 +53,8 @@ function parseCurlCommand(curlCommand: string): { url: string; method: string; h
         result.headers[headerMatch[1]] = headerMatch[2];
       }
     } else if (line.startsWith("--data")) {
-      const dataMatch = line.match(/'({[^}]+})'/);
+      // Extract everything between the first and last single quotes
+      const dataMatch = line.match(/'([^']+)'/);
       if (dataMatch) {
         result.body = dataMatch[1];
       }
@@ -68,13 +66,11 @@ function parseCurlCommand(curlCommand: string): { url: string; method: string; h
 
 function generateWebhookJson(curlData: { url: string; method: string; headers: Record<string, string>; body?: string }): WebhookJson {
   const urlObj = new URL(curlData.url);
+  const parsedBody = curlData.body ? JSON.parse(curlData.body) : {};
   const webhookNode: WebhookNode = {
     parameters: {
       httpMethod: curlData.method,
-      path: urlObj.pathname,
-      options: {
-        rawBody: false
-      }
+      path: urlObj.pathname
     },
     type: "n8n-nodes-base.webhook",
     typeVersion: 2,
@@ -82,7 +78,7 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
     id: uuidv4(),
     name: "Webhook",
     webhookId: uuidv4(),
-    notes: curlData.body ? `curl command with body: ${curlData.body}` : "curl command"
+    notes: curlData.body ? `curl command with body: ${JSON.stringify(parsedBody, null, 2)}` : "curl command"
   };
 
   return {
@@ -91,7 +87,7 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
     pinData: {
       "Webhook": [
         {
-          body: curlData.body ? JSON.parse(curlData.body) : {},
+          body: parsedBody,
           webhookUrl: curlData.url,
           executionMode: "test"
         }
