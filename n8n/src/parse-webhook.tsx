@@ -64,20 +64,24 @@ export default function Command() {
   useEffect(() => {
     // Get selected text when command is launched
     getSelectedText().then((text) => {
-      if (text) {
-        const trimmed = text.trim();
-        try {
-          // Only set if it's valid JSON and starts with {
+      try {
+        if (text) {
+          const trimmed = text.trim();
           if (trimmed.startsWith('{')) {
             // Test if it's valid JSON
             JSON.parse(trimmed);
             setWebhookJson(trimmed);
           }
-        } catch (e) {
-          // Invalid JSON, ignore the selected text
-          console.error("Failed to parse selected text as JSON:", e);
         }
+      } catch (e) {
+        // Any error, default to empty input
+        console.error("Error processing selected text:", e);
+        setWebhookJson("");
       }
+    }).catch((e) => {
+      // Error getting selected text, default to empty input
+      console.error("Error getting selected text:", e);
+      setWebhookJson("");
     });
   }, []);
 
