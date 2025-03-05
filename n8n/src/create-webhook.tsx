@@ -2,6 +2,7 @@ import { showToast, Toast, Clipboard, Form, ActionPanel, Action, getSelectedText
 import { v4 as uuidv4 } from 'uuid';
 import { useState, useEffect } from "react";
 import parseCurl from 'parse-curl';
+import { sentenceCase } from "change-case";
 
 interface WebhookNode {
   parameters: {
@@ -34,6 +35,16 @@ function parseCurlCommand(curlCommand: string): { url: string; method: string; h
   };
 }
 
+function getWebhookNameFromPath(path: string): string {
+  // Remove leading/trailing slashes and get the last segment
+  const cleanPath = path.replace(/^\/+|\/+$/g, '');
+  const segments = cleanPath.split('/');
+  const lastSegment = segments[segments.length - 1];
+  
+  // Convert kebab-case or snake_case to Title Case
+  return sentenceCase(lastSegment.replace(/[-_]/g, ' '));
+}
+
 function generateWebhookJson(curlData: { url: string; method: string; headers: Record<string, string>; body?: string }, originalCurl: string): WebhookJson {
   const urlObj = new URL(curlData.url);
   // Extract path after webhook-test
@@ -41,6 +52,9 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
   const path = pathMatch ? pathMatch[1] : urlObj.pathname;
   
   const parsedBody = curlData.body ? JSON.parse(curlData.body) : {};
+  
+  // Get webhook name from the last segment of the path
+  const webhookName = getWebhookNameFromPath(path);
   
   const webhookNode: WebhookNode = {
     parameters: {
@@ -51,7 +65,7 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
     typeVersion: 2,
     position: [0, 0],
     id: uuidv4(),
-    name: "Webhook",
+    name: webhookName,
     webhookId: uuidv4(),
     notes: `Original curl command:\n${originalCurl}`
   };
