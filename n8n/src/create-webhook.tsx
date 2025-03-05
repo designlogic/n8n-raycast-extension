@@ -25,37 +25,22 @@ interface WebhookJson {
 }
 
 function parseCurlCommand(curlCommand: string): { url: string; method: string; headers: Record<string, string>; body?: string } {
-  console.log("Input curl command:", curlCommand);
-  
-  try {
-    const parsed = parseCurl(curlCommand);
-    console.log("Parsed curl:", parsed);
-    
-    const result = {
-      url: parsed.url || "",
-      method: parsed.method || "GET",
-      headers: parsed.header || {},
-      body: parsed.body
-    };
-
-    console.log("Final parsed result:", result);
-    return result;
-  } catch (error) {
-    console.error("Failed to parse curl:", error);
-    throw error;
-  }
+  const parsed = parseCurl(curlCommand);
+  return {
+    url: parsed.url || "",
+    method: parsed.method || "GET",
+    headers: parsed.header || {},
+    body: parsed.body
+  };
 }
 
 function generateWebhookJson(curlData: { url: string; method: string; headers: Record<string, string>; body?: string }, originalCurl: string): WebhookJson {
-  console.log("Generating webhook JSON from:", curlData);
   const urlObj = new URL(curlData.url);
   // Extract path after webhook-test
   const pathMatch = urlObj.pathname.match(/\/webhook-test(.*)/);
   const path = pathMatch ? pathMatch[1] : urlObj.pathname;
-  console.log("Extracted path:", path);
   
   const parsedBody = curlData.body ? JSON.parse(curlData.body) : {};
-  console.log("Parsed body:", parsedBody);
   
   const webhookNode: WebhookNode = {
     parameters: {
@@ -71,7 +56,7 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
     notes: `Original curl command:\n${originalCurl}`
   };
 
-  const result = {
+  return {
     nodes: [webhookNode],
     connections: {},
     pinData: {
@@ -84,19 +69,10 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
       ]
     }
   };
-
-  console.log("Final webhook JSON:", result);
-  return result;
 }
 
 export default function Command() {
-  const defaultCurl = `curl --location 'https://workflow.sanctifai.com/webhook-test/hgi/find-humans' \
---header 'Content-Type: application/json' \
---data '{
-    "description":"I need a human to draw me a picture"
-}'`;
-  
-  const [curlCommand, setCurlCommand] = useState(defaultCurl);
+  const [curlCommand, setCurlCommand] = useState("");
 
   const handleSubmit = async () => {
     try {
