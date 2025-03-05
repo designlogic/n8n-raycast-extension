@@ -58,6 +58,18 @@
         "webhook",
         "n8n"
       ]
+    },
+    {
+      "name": "parse-webhook",
+      "title": "Parse Webhook",
+      "description": "Convert n8n webhook JSON to curl command",
+      "mode": "view",
+      "keywords": [
+        "curl",
+        "webhook",
+        "n8n",
+        "json"
+      ]
     }
   ],
   "dependencies": {
