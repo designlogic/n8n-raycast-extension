@@ -52,7 +52,8 @@ function parseCurlCommand(curlCommand: string): { url: string; method: string; h
   }
 
   // Process remaining lines
-  for (let i = 1; i < lines.length; i++) {
+  let i = 1;
+  while (i < lines.length) {
     const line = lines[i];
     console.log("Processing line:", line);
     
@@ -62,13 +63,32 @@ function parseCurlCommand(curlCommand: string): { url: string; method: string; h
         result.headers[headerMatch[1]] = headerMatch[2];
         console.log("Extracted header:", headerMatch[1], headerMatch[2]);
       }
+      i++;
     } else if (line.startsWith("--data")) {
-      // Extract everything between the first and last single quotes
-      const dataMatch = line.match(/'([^']+)'/);
+      // Handle multi-line JSON body
+      const bodyLines = [];
+      i++; // Skip the --data line
+      
+      // Collect all lines until we find the closing quote
+      while (i < lines.length && !lines[i].endsWith("'")) {
+        bodyLines.push(lines[i]);
+        i++;
+      }
+      // Add the last line with the closing quote
+      if (i < lines.length) {
+        bodyLines.push(lines[i]);
+      }
+      
+      // Join the lines and extract the JSON
+      const fullBody = bodyLines.join("\n");
+      const dataMatch = fullBody.match(/'({[\s\S]*})'/);
       if (dataMatch) {
         result.body = dataMatch[1];
         console.log("Extracted body:", result.body);
       }
+      i++;
+    } else {
+      i++;
     }
   }
 
