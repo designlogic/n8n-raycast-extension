@@ -62,11 +62,12 @@ export default function Command() {
   const [webhookJson, setWebhookJson] = useState("");
 
   useEffect(() => {
-    console.log("Starting getSelectedText...");
-    // Get selected text when command is launched
-    getSelectedText()
-      .then((text) => {
-        console.log("getSelectedText result:", { text, length: text?.length, type: typeof text });
+    const init = async () => {
+      console.log("Command initialized");
+      try {
+        console.log("Starting getSelectedText...");
+        const text = await getSelectedText();
+        console.log("getSelectedText completed:", { text, length: text?.length, type: typeof text });
         
         // If no text is selected or text is empty, just return
         if (!text?.trim()) {
@@ -97,28 +98,34 @@ export default function Command() {
           });
           setWebhookJson("");
         }
-      })
-      .catch((e: unknown) => {
-        // Error getting selected text, default to empty input
+      } catch (e: unknown) {
         const error = e as Error;
-        console.error("Error getting selected text:", { 
+        console.error("Failed to get selected text:", {
           error,
-          message: error.message, 
+          message: error.message,
           stack: error.stack,
-          type: error.constructor.name 
+          type: error.constructor.name
         });
-        
+
         // Show a helpful message if it's a permissions error
         if (error.message.includes("Unable to get selected text")) {
-          showToast({
+          await showToast({
             style: Toast.Style.Failure,
-            title: "Permission Required",
+            title: "⚠️ Permission Required",
             message: "Please grant Accessibility permission to Raycast in System Settings → Privacy & Security → Accessibility",
           });
         }
-        
         setWebhookJson("");
-      });
+      }
+    };
+
+    // Show initial toast to indicate we're checking for selected text
+    showToast({
+      style: Toast.Style.Animated,
+      title: "Checking for selected text...",
+    });
+
+    init().catch(console.error);
   }, []);
 
   const handleSubmit = async () => {
