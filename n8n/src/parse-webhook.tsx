@@ -63,26 +63,31 @@ export default function Command() {
 
   useEffect(() => {
     // Get selected text when command is launched
-    getSelectedText().then((text) => {
-      try {
-        if (text) {
+    getSelectedText()
+      .then((text) => {
+        // If no text is selected or text is empty, just return
+        if (!text?.trim()) {
+          return;
+        }
+
+        try {
           const trimmed = text.trim();
           if (trimmed.startsWith('{')) {
             // Test if it's valid JSON
             JSON.parse(trimmed);
             setWebhookJson(trimmed);
           }
+        } catch (e) {
+          // Any error, default to empty input
+          console.error("Error processing selected text:", e);
+          setWebhookJson("");
         }
-      } catch (e) {
-        // Any error, default to empty input
-        console.error("Error processing selected text:", e);
+      })
+      .catch((e) => {
+        // Error getting selected text, default to empty input
+        console.error("Error getting selected text:", e);
         setWebhookJson("");
-      }
-    }).catch((e) => {
-      // Error getting selected text, default to empty input
-      console.error("Error getting selected text:", e);
-      setWebhookJson("");
-    });
+      });
   }, []);
 
   const handleSubmit = async () => {
