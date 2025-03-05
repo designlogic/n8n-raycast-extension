@@ -24,7 +24,10 @@ interface WebhookJson {
 }
 
 function parseCurlCommand(curlCommand: string): { url: string; method: string; headers: Record<string, string>; body?: string } {
+  console.log("Input curl command:", curlCommand);
   const lines = curlCommand.split("\n").map(line => line.trim());
+  console.log("Split lines:", lines);
+  
   const result = {
     url: "",
     method: "GET",
@@ -33,40 +36,52 @@ function parseCurlCommand(curlCommand: string): { url: string; method: string; h
   };
 
   const currentLine = lines[0];
+  console.log("First line:", currentLine);
+  
   // Extract URL
   const urlMatch = currentLine.match(/'([^']+)'/);
   if (urlMatch) {
     result.url = urlMatch[1];
+    console.log("Extracted URL:", result.url);
   }
 
   // Check for method
   if (currentLine.includes("--location")) {
     result.method = "POST";
+    console.log("Method set to POST");
   }
 
   // Process remaining lines
   for (let i = 1; i < lines.length; i++) {
     const line = lines[i];
+    console.log("Processing line:", line);
+    
     if (line.startsWith("--header")) {
       const headerMatch = line.match(/'([^:]+):\s*([^']+)'/);
       if (headerMatch) {
         result.headers[headerMatch[1]] = headerMatch[2];
+        console.log("Extracted header:", headerMatch[1], headerMatch[2]);
       }
     } else if (line.startsWith("--data")) {
       // Extract everything between the first and last single quotes
       const dataMatch = line.match(/'([^']+)'/);
       if (dataMatch) {
         result.body = dataMatch[1];
+        console.log("Extracted body:", result.body);
       }
     }
   }
 
+  console.log("Final parsed result:", result);
   return result;
 }
 
 function generateWebhookJson(curlData: { url: string; method: string; headers: Record<string, string>; body?: string }): WebhookJson {
+  console.log("Generating webhook JSON from:", curlData);
   const urlObj = new URL(curlData.url);
   const parsedBody = curlData.body ? JSON.parse(curlData.body) : {};
+  console.log("Parsed body:", parsedBody);
+  
   const webhookNode: WebhookNode = {
     parameters: {
       httpMethod: curlData.method,
@@ -81,7 +96,7 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
     notes: curlData.body ? `curl command with body: ${JSON.stringify(parsedBody, null, 2)}` : "curl command"
   };
 
-  return {
+  const result = {
     nodes: [webhookNode],
     connections: {},
     pinData: {
@@ -94,6 +109,9 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
       ]
     }
   };
+
+  console.log("Final webhook JSON:", result);
+  return result;
 }
 
 export default function Command() {
