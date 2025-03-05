@@ -25,8 +25,15 @@ interface WebhookJson {
 
 function parseCurlCommand(curlCommand: string): { url: string; method: string; headers: Record<string, string>; body?: string } {
   console.log("Input curl command:", curlCommand);
-  const lines = curlCommand.split("\n").map(line => line.trim());
-  console.log("Split lines:", lines);
+  
+  // Normalize line endings and remove line continuations
+  const normalizedCommand = curlCommand
+    .replace(/\r\n/g, '\n')  // Normalize line endings
+    .replace(/\\\n/g, ' ')   // Remove line continuations
+    .replace(/\s+/g, ' ')    // Normalize whitespace
+    .trim();
+
+  console.log("Normalized command:", normalizedCommand);
   
   const result = {
     url: "",
@@ -35,60 +42,37 @@ function parseCurlCommand(curlCommand: string): { url: string; method: string; h
     body: undefined as string | undefined
   };
 
-  const currentLine = lines[0];
-  console.log("First line:", currentLine);
-  
-  // Extract URL
-  const urlMatch = currentLine.match(/'([^']+)'/);
+  // Extract URL - handle both single and double quotes
+  const urlMatch = normalizedCommand.match(/['"]([^'"]+)['"]/);
   if (urlMatch) {
     result.url = urlMatch[1];
     console.log("Extracted URL:", result.url);
   }
 
   // Check for method
-  if (currentLine.includes("--location")) {
+  if (normalizedCommand.includes("--location")) {
     result.method = "POST";
     console.log("Method set to POST");
   }
 
-  // Process remaining lines
-  let i = 1;
-  while (i < lines.length) {
-    const line = lines[i];
-    console.log("Processing line:", line);
-    
-    if (line.startsWith("--header")) {
-      const headerMatch = line.match(/'([^:]+):\s*([^']+)'/);
-      if (headerMatch) {
-        result.headers[headerMatch[1]] = headerMatch[2];
-        console.log("Extracted header:", headerMatch[1], headerMatch[2]);
-      }
-      i++;
-    } else if (line.startsWith("--data")) {
-      // Handle multi-line JSON body
-      const bodyLines = [];
-      i++; // Skip the --data line
-      
-      // Collect all lines until we find the closing quote
-      while (i < lines.length && !lines[i].endsWith("'")) {
-        bodyLines.push(lines[i]);
-        i++;
-      }
-      // Add the last line with the closing quote
-      if (i < lines.length) {
-        bodyLines.push(lines[i]);
-      }
-      
-      // Join the lines and extract the JSON
-      const fullBody = bodyLines.join("\n");
-      const dataMatch = fullBody.match(/'({[\s\S]*})'/);
-      if (dataMatch) {
-        result.body = dataMatch[1];
-        console.log("Extracted body:", result.body);
-      }
-      i++;
-    } else {
-      i++;
+  // Extract headers - handle both single and double quotes
+  const headerMatches = normalizedCommand.matchAll(/--header\s+['"]([^:]+):\s*([^'"]+)['"]/g);
+  for (const match of headerMatches) {
+    result.headers[match[1]] = match[2];
+    console.log("Extracted header:", match[1], match[2]);
+  }
+
+  // Extract body - handle both single and double quotes and multi-line JSON
+  const bodyMatch = normalizedCommand.match(/--data\s+['"]([\s\S]*?)['"]/);
+  if (bodyMatch) {
+    try {
+      // Try to parse the body as JSON to validate and normalize it
+      const parsedBody = JSON.parse(bodyMatch[1]);
+      result.body = JSON.stringify(parsedBody);
+      console.log("Extracted and validated body:", result.body);
+    } catch (e) {
+      console.log("Failed to parse body as JSON:", e);
+      result.body = bodyMatch[1];
     }
   }
 
@@ -135,8 +119,8 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
 }
 
 export default function Command() {
-  const defaultCurl = `curl --location 'https://workflow.sanctifai.com/webhook-test/hgi/find-humans' \\
---header 'Content-Type: application/json' \\
+  const defaultCurl = `curl --location 'https://workflow.sanctifai.com/webhook-test/hgi/find-humans' \
+--header 'Content-Type: application/json' \
 --data '{
     "description":"I need a human to draw me a picture"
 }'`;
