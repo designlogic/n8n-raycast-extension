@@ -92,20 +92,44 @@ export default function Command() {
     const initClipboard = async () => {
       try {
         const text = await Clipboard.readText();
-        if (text && text.trim().startsWith('{')) {
-          const jsonData = JSON.parse(text.trim()) as WebhookJson;
+        console.log("Clipboard content:", text);
+        
+        if (!text) {
+          console.log("No clipboard content found");
+          return;
+        }
+
+        const trimmedText = text.trim();
+        console.log("Trimmed text starts with '{':", trimmedText.startsWith('{'));
+        
+        if (trimmedText.startsWith('{')) {
+          console.log("Attempting to parse JSON");
+          const jsonData = JSON.parse(trimmedText) as WebhookJson;
+          console.log("Parsed JSON:", jsonData);
+          
           if (jsonData.pinData) {
+            console.log("Found pinData:", jsonData.pinData);
             const nodeData = Object.values(jsonData.pinData)[0];
+            console.log("First node data:", nodeData);
+            
             if (Array.isArray(nodeData) && nodeData[0]?.webhookUrl) {
+              console.log("Found webhook URL:", nodeData[0].webhookUrl);
               const method = jsonData.nodes?.[0]?.parameters?.httpMethod || 'GET';
               const body = nodeData[0].body ? JSON.stringify(nodeData[0].body) : '';
               const curlCmd = `curl -X ${method} "${nodeData[0].webhookUrl}"${body ? ` -d '${body}'` : ''}`;
+              console.log("Generated curl command:", curlCmd);
               setCurlCommand(curlCmd);
+            } else {
+              console.log("No webhook URL found in node data");
             }
+          } else {
+            console.log("No pinData found in JSON");
           }
+        } else {
+          console.log("Clipboard content doesn't start with '{'");
         }
       } catch (error) {
-        // Silently handle errors - we'll just leave the input empty
+        console.error("Error processing clipboard:", error);
       }
     };
     
