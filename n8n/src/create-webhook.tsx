@@ -135,7 +135,13 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
 }
 
 export default function Command() {
-  const [curlCommand, setCurlCommand] = useState("");
+  const defaultCurl = `curl --location 'https://workflow.sanctifai.com/webhook-test/hgi/find-humans' \\
+--header 'Content-Type: application/json' \\
+--data '{
+    "description":"I need a human to draw me a picture"
+}'`;
+  
+  const [curlCommand, setCurlCommand] = useState(defaultCurl);
 
   const handleSubmit = async () => {
     try {
