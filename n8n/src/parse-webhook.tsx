@@ -63,8 +63,15 @@ export default function Command() {
     getSelectedText().then((text) => {
       if (text) {
         const trimmed = text.trim();
-        if (trimmed.startsWith('{')) {
-          setWebhookJson(trimmed);
+        try {
+          // Only set if it's valid JSON and starts with {
+          if (trimmed.startsWith('{')) {
+            // Test if it's valid JSON
+            JSON.parse(trimmed);
+            setWebhookJson(trimmed);
+          }
+        } catch (e) {
+          // Invalid JSON, ignore the selected text
         }
       }
     });
