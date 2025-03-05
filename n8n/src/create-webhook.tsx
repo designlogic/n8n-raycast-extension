@@ -74,7 +74,7 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
     nodes: [webhookNode],
     connections: {},
     pinData: {
-      "Webhook": [
+      [webhookName]: [
         {
           body: parsedBody,
           webhookUrl: curlData.url,
