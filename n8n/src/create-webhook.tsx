@@ -92,24 +92,14 @@ export default function Command() {
     const initClipboard = async () => {
       try {
         const text = await Clipboard.readText();
-        console.log("Clipboard content:", text);
-        
-        if (!text) {
-          console.log("No clipboard content found");
-          return;
-        }
-
-        const trimmedText = text.trim();
-        console.log("Trimmed text starts with 'curl':", trimmedText.toLowerCase().startsWith('curl'));
-        
-        if (trimmedText.toLowerCase().startsWith('curl')) {
-          console.log("Found curl command in clipboard");
-          setCurlCommand(trimmedText);
-        } else {
-          console.log("Clipboard content doesn't start with 'curl'");
+        if (text) {
+          const trimmedText = text.trim();
+          if (trimmedText.toLowerCase().startsWith('curl')) {
+            setCurlCommand(trimmedText);
+          }
         }
       } catch (error) {
-        console.error("Error processing clipboard:", error);
+        // Silently handle clipboard errors
       }
     };
     
