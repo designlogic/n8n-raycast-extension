@@ -1,6 +1,6 @@
-import { showToast, Toast, Clipboard, Form, ActionPanel, Action } from "@raycast/api";
+import { showToast, Toast, Clipboard, Form, ActionPanel, Action, getSelectedText } from "@raycast/api";
 import { v4 as uuidv4 } from 'uuid';
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import parseCurl from 'parse-curl';
 
 interface WebhookNode {
@@ -74,10 +74,23 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
 export default function Command() {
   const [curlCommand, setCurlCommand] = useState("");
 
+  useEffect(() => {
+    // Get selected text when command is launched
+    getSelectedText().then((text) => {
+      if (text) {
+        const trimmed = text.trim();
+        if (trimmed.startsWith('curl')) {
+          setCurlCommand(trimmed);
+        }
+      }
+    });
+  }, []);
+
   const handleSubmit = async () => {
     try {
-      const parsedCurl = parseCurlCommand(curlCommand);
-      const webhookJson = generateWebhookJson(parsedCurl, curlCommand);
+      const trimmedCommand = curlCommand.trim();
+      const parsedCurl = parseCurlCommand(trimmedCommand);
+      const webhookJson = generateWebhookJson(parsedCurl, trimmedCommand);
       
       await Clipboard.copy(JSON.stringify(webhookJson, null, 2));
       
