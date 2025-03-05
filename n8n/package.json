@@ -47,6 +47,13 @@
           "required": true
         }
       ]
+    },
+    {
+      "name": "create-webhook",
+      "title": "Create Webhook",
+      "description": "Convert curl command to n8n webhook JSON",
+      "mode": "view",
+      "keywords": ["curl", "webhook", "n8n"]
     }
   ],
   "dependencies": {
