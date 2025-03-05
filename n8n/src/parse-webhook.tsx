@@ -5,7 +5,7 @@ interface WebhookNode {
   parameters: {
     httpMethod: string;
     path: string;
-    options: Record<string, unknown>;
+    options?: Record<string, unknown>;
   };
   type: string;
   typeVersion: number;
@@ -19,37 +19,40 @@ interface WebhookNode {
 interface WebhookJson {
   nodes: WebhookNode[];
   connections: Record<string, unknown>;
-  pinData?: {
-    Webhook: Array<{
+  pinData: {
+    [key: string]: Array<{
       body: Record<string, unknown>;
       webhookUrl: string;
       executionMode: string;
     }>;
   };
-  meta?: Record<string, unknown>;
+  meta?: {
+    instanceId: string;
+  };
 }
 
 function generateCurlCommand(webhookJson: WebhookJson): string {
   const webhookNode = webhookJson.nodes[0];
-  const pinData = webhookJson.pinData?.Webhook?.[0];
+  const nodeName = webhookNode.name;
+  const pinData = webhookJson.pinData[nodeName]?.[0];
   
   if (!webhookNode || !pinData) {
     throw new Error("Invalid webhook JSON structure");
   }
 
-  const { httpMethod, path } = webhookNode.parameters;
+  const { httpMethod } = webhookNode.parameters;
   const { body, webhookUrl } = pinData;
 
   // Build the curl command
   const parts = [
-    `curl --location '${webhookUrl}${path}'`,
+    `curl --location '${webhookUrl}'`,
     `--request '${httpMethod}'`,
     "--header 'Content-Type: application/json'"
   ];
 
   // Add body if it exists and is not empty
   if (Object.keys(body).length > 0) {
-    parts.push(`--data '${JSON.stringify(body)}'`);
+    parts.push(`--data '${JSON.stringify(body, null, 2)}'`);
   }
 
   return parts.join(" \\\n");
@@ -72,6 +75,7 @@ export default function Command() {
           }
         } catch (e) {
           // Invalid JSON, ignore the selected text
+          console.error("Failed to parse selected text as JSON:", e);
         }
       }
     });
@@ -90,6 +94,7 @@ export default function Command() {
         title: "Curl command copied to clipboard",
       });
     } catch (error) {
+      console.error("Error generating curl command:", error);
       await showToast({
         style: Toast.Style.Failure,
         title: "Failed to parse webhook JSON",
