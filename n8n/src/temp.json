@@ -3,7 +3,7 @@
       {
         "parameters": {
           "httpMethod": "POST",
-          "path": "/webhook-test/hgi/find-humans"
+          "path": "/hgi/find-humans"
         },
         "type": "n8n-nodes-base.webhook",
         "typeVersion": 2,
@@ -11,10 +11,10 @@
           0,
           0
         ],
-        "id": "22551ffa-608c-4a88-a3e7-28e33605dc45",
+        "id": "5b2389ef-dd67-4f30-94a5-1c47beba009f",
         "name": "Webhook",
-        "webhookId": "013f9314-a6b5-46f0-bec0-1158b0867499",
-        "notes": "curl command with body: {\n  \"description\": \"I need a human to draw me a picture\"\n}"
+        "webhookId": "67482587-a4eb-4791-bef2-6b0299cd9229",
+        "notes": "Original curl command:\ncurl --location 'https://workflow.sanctifai.com/webhook-test/hgi/find-humans' --header 'Content-Type: application/json' --data '{\n    \"description\":\"I need a human to draw me a picture\"\n}'"
       }
     ],
     "connections": {},
