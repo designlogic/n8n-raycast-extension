@@ -9,6 +9,7 @@
     "Web"
   ],
   "license": "MIT",
+  "permissions": ["clipboard-read"],
   "preferences": [
     {
       "name": "apiKey",
