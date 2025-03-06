@@ -3,30 +3,42 @@
       {
         "parameters": {
           "httpMethod": "POST",
-          "path": "/hgi/find-humans"
+          "path": "/hgi/create-job",
+          "options": {}
         },
         "type": "n8n-nodes-base.webhook",
         "typeVersion": 2,
         "position": [
-          0,
-          0
+          -360,
+          -180
         ],
-        "id": "5b2389ef-dd67-4f30-94a5-1c47beba009f",
-        "name": "Webhook",
-        "webhookId": "67482587-a4eb-4791-bef2-6b0299cd9229",
-        "notes": "Original curl command:\ncurl --location 'https://workflow.sanctifai.com/webhook-test/hgi/find-humans' --header 'Content-Type: application/json' --data '{\n    \"description\":\"I need a human to draw me a picture\"\n}'"
+        "id": "34a188af-c6fc-4745-910f-607b167deb9e",
+        "name": "Create job",
+        "webhookId": "f128452d-077c-4685-8e7c-d94f50c6d38d",
+        "notes": "Original curl command:\ncurl --location 'https://workflow.sanctifai.com/webhook-test/hgi/create-job' \\\n--header 'Content-Type: application/json' \\\n--data '{\n  \"jobTitle\": \"Illustration Project\",\n  \"jobDescription\": \"A project to create illustrations for a fantasy book.\",\n  \"totalBudget\": 300,\n  \"numberOfHires\": 3,\n  \"taskBreakdown\": \"Create character designs, design cover art, and produce interior illustrations.\",\n  \"timeline\": {\n    \"start\": \"2025-03-05T00:00:00Z\",\n    \"end\": \"2025-04-05T23:59:59Z\"\n  }\n}\n'"
       }
     ],
     "connections": {},
     "pinData": {
-      "Webhook": [
+      "Create job": [
         {
           "body": {
-            "description": "I need a human to draw me a picture"
+            "jobTitle": "Illustration Project",
+            "jobDescription": "A project to create illustrations for a fantasy book.",
+            "totalBudget": 300,
+            "numberOfHires": 3,
+            "taskBreakdown": "Create character designs, design cover art, and produce interior illustrations.",
+            "timeline": {
+              "start": "2025-03-05T00:00:00Z",
+              "end": "2025-04-05T23:59:59Z"
+            }
           },
-          "webhookUrl": "https://workflow.sanctifai.com/webhook-test/hgi/find-humans",
+          "webhookUrl": "https://workflow.sanctifai.com/webhook-test/hgi/create-job",
           "executionMode": "test"
         }
       ]
+    },
+    "meta": {
+      "instanceId": "fd2923706552ce9d68cbba960de748407be97d36fddd8ac7f258f9277aa7dcce"
     }
   }
