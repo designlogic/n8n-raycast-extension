@@ -2,11 +2,12 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "n8n",
   "title": "n8n",
-  "description": "n8n Workflow launcher",
+  "description": "n8n Workflow launcher and utilities",
   "icon": "n8n.png",
   "author": "DesignLogicSolutions",
   "categories": [
-    "Web"
+    "Web",
+    "Developer Tools"
   ],
   "license": "MIT",
   "permissions": [
@@ -32,10 +33,47 @@
   ],
   "commands": [
     {
+      "name": "convert-json-mapping",
+      "title": "Convert JSON to Manual Mapping",
+      "description": "Convert Set node JSON output format to Manual Mapping assignments",
+      "mode": "view",
+      "keywords": [
+        "n8n",
+        "json",
+        "set",
+        "node",
+        "convert",
+        "manual",
+        "mapping"
+      ]
+    },
+    {
+      "name": "convert-manual-mapping",
+      "title": "Convert Manual Mapping to JSON",
+      "description": "Convert Set node Manual Mapping assignments to JSON output format",
+      "mode": "view",
+      "keywords": [
+        "n8n",
+        "json",
+        "set",
+        "node",
+        "convert",
+        "manual",
+        "mapping"
+      ]
+    },
+    {
       "name": "search-workflows",
       "title": "Search Workflows",
-      "description": "Search Workflows",
-      "mode": "view"
+      "description": "Search and manage your n8n workflows",
+      "mode": "view",
+      "keywords": [
+        "n8n",
+        "workflow",
+        "search",
+        "find",
+        "list"
+      ]
     },
     {
       "name": "create-workflow",
@@ -49,6 +87,12 @@
           "type": "text",
           "required": true
         }
+      ],
+      "keywords": [
+        "n8n",
+        "workflow",
+        "create",
+        "new"
       ]
     },
     {
@@ -59,7 +103,9 @@
       "keywords": [
         "curl",
         "webhook",
-        "n8n"
+        "n8n",
+        "convert",
+        "http"
       ]
     },
     {
@@ -71,7 +117,9 @@
         "curl",
         "webhook",
         "n8n",
-        "json"
+        "json",
+        "convert",
+        "http"
       ]
     }
   ],
@@ -81,7 +129,7 @@
     "change-case": "^5.4.4",
     "node-fetch": "^3.3.2",
     "parse-curl": "^0.2.6",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.1"
   },
   "devDependencies": {
     "@raycast/eslint-config": "^1.0.11",
@@ -91,6 +139,7 @@
     "@types/uuid": "^9.0.8",
     "eslint": "^8.57.0",
     "prettier": "^3.3.3",
+    "react-devtools": "^5.2.0",
     "typescript": "^5.4.5"
   },
   "scripts": {
