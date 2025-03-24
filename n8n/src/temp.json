@@ -3,27 +3,21 @@
     {
       "parameters": {
         "mode": "raw",
-        "jsonOutput": "={\n  \"storedProcedure\":\"[dbo].[SaveEventType]\",\n    \"rezdyProductCode\": \"{{ $json.body.productCode }}\",\n    \"name\": \"{{ $json.body.name }}\",\n    \"description\": \"{{ $json.body.shortDescription }}\",\n    \"isPrivateTour\": {{ $json.body.name.toLowerCase().indexOf(\"private\") > -1 }}\n}",
+        "jsonOutput": "={\n  \"storedProcedure\": \"[dbo].[SaveEventType]\",\n  \"rezdyProductCode\": \"{{$json.body.productCode}}\",\n  \"name\": \"{{$json.body.name}}\",\n  \"description\": \"{{$json.body.shortDescription}}\",\n  \"isPrivateTour\": \"{{$json.body.name.toLowerCase().indexOf(\\\"private\\\") > -1}}\"\n}",
         "options": {}
       },
       "type": "n8n-nodes-base.set",
       "typeVersion": 3.4,
       "position": [
-        160,
-        480
+        180,
+        -20
       ],
-      "id": "e04ccee6-d36e-40fd-a3e9-c2844b4b375d",
-      "name": "Save Product Payload",
+      "id": "324007ea-085d-45f4-bcc3-770d28190dc5",
+      "name": "Save Product Payload2",
       "notesInFlow": false
     }
   ],
-  "connections": {
-    "Save Product Payload": {
-      "main": [
-        []
-      ]
-    }
-  },
+  "connections": {},
   "pinData": {},
   "meta": {
     "templateCredsSetupCompleted": true,
@@ -31,11 +25,28 @@
   }
 }
 
-
 {
-  "storedProcedure":"[dbo].[SaveEventType]",
-    "rezdyProductCode": "{{ $json.body.productCode }}",
-    "name": "{{ $json.body.name }}",
-    "description": "{{ $json.body.shortDescription }}",
-    "isPrivateTour": {{ $json.body.name.toLowerCase().indexOf("private") > -1 }}
+  "nodes": [
+    {
+      "parameters": {
+        "mode": "raw",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        180,
+        -20
+      ],
+      "id": "324007ea-085d-45f4-bcc3-770d28190dc5",
+      "name": "Save Product Payload2",
+      "notesInFlow": false
+    }
+  ],
+  "connections": {},
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "9ff8924bc6715c8987190702b87b4792b5aa70fab39b2b007801c03008fce6da"
+  }
 }
