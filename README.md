@@ -1,13 +1,13 @@
 # n8n Raycast Extension
 
-A powerful Raycast extension that integrates with n8n, allowing you to manage and interact with your n8n workflows directly from your command bar. This extension provides quick access to your n8n instance, enabling you to execute workflows, monitor their status, and manage workflow states without leaving your workflow.
+A powerful Raycast extension that integrates with n8n, providing quick access to your workflows and data transformation tools. This extension allows you to search workflows, create new ones, and handle data mappings directly from Raycast.
 
 ## Features
 
-- 🚀 Execute n8n workflows directly from Raycast
-- 📊 Monitor workflow execution status
-- 🔄 Toggle workflow activation states
-- 🔍 Search and filter workflows
+- 🔍 Search and browse workflows with filtering capabilities
+- ➕ Create new workflows directly from Raycast
+- 🔄 Convert JSON and manual mappings
+- 🌐 Create and parse webhooks
 - ⚡ Quick access to your n8n instance
 - 🔐 Secure API token management
 
@@ -21,7 +21,7 @@ A powerful Raycast extension that integrates with n8n, allowing you to manage an
 
 1. Install the extension from the Raycast store or:
    ```bash
-   git clone https://github.com/yourusername/n8n-raycast-extension.git
+   git clone https://github.com/designlogic/n8n-raycast-extension.git
    cd n8n-raycast-extension
    ```
 
@@ -49,14 +49,14 @@ To work on the extension locally:
    npm run dev
    ```
 
-## Usage
+## Available Commands
 
-1. Open Raycast (`⌘` + `Space`)
-2. Type "n8n" to see available commands:
-   - View Workflows
-   - Execute Workflow
-   - Toggle Workflow State
-   - Open n8n Dashboard
+- `Search Workflows`: Browse and search through your n8n workflows with tag filtering
+- `Create Workflow`: Create a new workflow with a specified name
+- `Convert JSON Mapping`: Convert JSON data to n8n mapping format
+- `Convert Manual Mapping`: Convert manual mapping data to n8n format
+- `Create Webhook`: Create a new webhook for your workflows
+- `Parse Webhook`: Parse and analyze webhook data
 
 ## Configuration
 
