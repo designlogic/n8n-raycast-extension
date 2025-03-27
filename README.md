@@ -10,11 +10,17 @@ I built this extension for Raycast to make it easier for me to search for workfl
 ## Current Commands
 
 - Search and browse workflows with tag filtering
+
+  ![Search for Workflow](/n8n/assets/searchworkflows.gif)
+
 - Create new workflows
+
+  ![Create Workflow](/n8n/assets/createworkflow.gif)
 - Convert JSON and manual mappings
 - Create and parse webhooks
 
-## Development Setup - I have not submitted this to the Raycast store yet so you will need to run it from your local environment.  
+## Development Setup
+I have not submitted this to the Raycast store yet so you will need to run it from your local environment.  
 
 1. Clone the repo
 
