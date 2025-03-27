@@ -7,6 +7,9 @@ A Raycast extension that provides quick access to your n8n workflows and data tr
 I built this extension for Raycast to make it easier for me to search for workflows. I have been adding new commands as needed to speed up my n8n development. Please let me know if there is a feature you would like to add.
 
 
+![Create Workflow](/n8n/assets/screenshot.png)
+
+
 ## Current Commands
 
 - Search and browse workflows with tag filtering
