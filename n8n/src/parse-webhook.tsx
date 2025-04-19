@@ -1,5 +1,7 @@
 import { showToast, Toast, Clipboard, Form, ActionPanel, Action, getSelectedText } from "@raycast/api";
 import { useState, useEffect } from "react";
+import { InstanceSelector } from "./components/InstanceSelector";
+import { N8nInstance } from "./types";
 
 interface WebhookNode {
   parameters: {
@@ -28,10 +30,11 @@ interface WebhookJson {
   };
   meta?: {
     instanceId: string;
+    instanceName: string;
   };
 }
 
-function generateCurlCommand(webhookJson: WebhookJson): string {
+function generateCurlCommand(webhookJson: WebhookJson, selectedInstance?: N8nInstance): string {
   const webhookNode = webhookJson.nodes[0];
   const nodeName = webhookNode.name;
   const pinData = webhookJson.pinData[nodeName]?.[0];
@@ -41,7 +44,23 @@ function generateCurlCommand(webhookJson: WebhookJson): string {
   }
 
   const { httpMethod } = webhookNode.parameters;
-  const { body, webhookUrl } = pinData;
+  let { webhookUrl } = pinData;
+
+  // If we have a selected instance and it's different from the original instance,
+  // update the webhook URL
+  if (selectedInstance && webhookJson.meta?.instanceId !== selectedInstance.id) {
+    try {
+      const originalUrl = new URL(webhookUrl);
+      const newUrl = new URL(selectedInstance.baseUrl);
+      originalUrl.protocol = newUrl.protocol;
+      originalUrl.host = newUrl.host;
+      webhookUrl = originalUrl.toString();
+    } catch (error) {
+      console.error("Error updating webhook URL:", error);
+    }
+  }
+
+  const { body } = pinData;
 
   // Build the curl command
   const parts = [
@@ -60,6 +79,8 @@ function generateCurlCommand(webhookJson: WebhookJson): string {
 
 export default function Command() {
   const [jsonInput, setJsonInput] = useState("");
+  const [selectedInstance, setSelectedInstance] = useState<N8nInstance>();
+  const [originalInstanceName, setOriginalInstanceName] = useState<string>();
 
   useEffect(() => {
     const init = async () => {
@@ -82,6 +103,14 @@ export default function Command() {
       const trimmedText = text.trim();
       if (trimmedText.startsWith('{')) {
         setJsonInput(trimmedText);
+        try {
+          const parsed = JSON.parse(trimmedText) as WebhookJson;
+          if (parsed.meta?.instanceName) {
+            setOriginalInstanceName(parsed.meta.instanceName);
+          }
+        } catch (error) {
+          // Ignore parsing errors here
+        }
       }
     };
     
@@ -90,25 +119,22 @@ export default function Command() {
 
   const handleSubmit = async () => {
     try {
-      console.log("Handling submit...");
       const trimmedJson = jsonInput.trim();
-      console.log("Trimmed JSON length:", trimmedJson.length);
-      
       const parsedJson = JSON.parse(trimmedJson) as WebhookJson;
-      console.log("Parsed webhook JSON:", { 
-        nodeCount: parsedJson.nodes?.length,
-        nodeName: parsedJson.nodes?.[0]?.name,
-        hasPinData: !!parsedJson.pinData
-      });
-      
-      const curlCommand = generateCurlCommand(parsedJson);
-      console.log("Generated curl command length:", curlCommand.length);
+      const curlCommand = generateCurlCommand(parsedJson, selectedInstance);
       
       await Clipboard.copy(curlCommand);
       
+      const instanceInfo = selectedInstance
+        ? ` for ${selectedInstance.name}`
+        : originalInstanceName
+          ? ` (original instance: ${originalInstanceName})`
+          : '';
+
       await showToast({
         style: Toast.Style.Success,
         title: "Curl command copied to clipboard",
+        message: `Webhook${instanceInfo}`,
       });
     } catch (e: unknown) {
       const error = e as Error;
@@ -134,6 +160,18 @@ export default function Command() {
         </ActionPanel>
       }
     >
+      {originalInstanceName && (
+        <Form.Description
+          title="Original Instance"
+          text={originalInstanceName}
+        />
+      )}
+      <InstanceSelector
+        onInstanceSelect={setSelectedInstance}
+        selectedInstanceId={selectedInstance?.id}
+        dropdownTitle="Target Instance (Optional)"
+        dropdownPlaceholder="Select target n8n instance"
+      />
       <Form.TextArea
         id="webhook"
         title="Webhook JSON"
@@ -143,4 +181,4 @@ export default function Command() {
       />
     </Form>
   );
-} 
+}

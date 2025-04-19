@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { useState, useEffect } from "react";
 import parseCurl from 'parse-curl';
 import { sentenceCase } from "change-case";
+import { InstanceSelector } from "./components/InstanceSelector";
+import { N8nInstance } from "./types";
 
 interface WebhookNode {
   parameters: {
@@ -22,7 +24,10 @@ interface WebhookJson {
   nodes: WebhookNode[];
   connections: Record<string, unknown>;
   pinData?: Record<string, unknown>;
-  meta?: Record<string, unknown>;
+  meta?: {
+    instanceId: string;
+    instanceName: string;
+  };
 }
 
 function parseCurlCommand(curlCommand: string): { url: string; method: string; headers: Record<string, string>; body?: string } {
@@ -45,11 +50,15 @@ function getWebhookNameFromPath(path: string): string {
   return sentenceCase(lastSegment.replace(/[-_]/g, ' '));
 }
 
-function generateWebhookJson(curlData: { url: string; method: string; headers: Record<string, string>; body?: string }, originalCurl: string): WebhookJson {
+function generateWebhookJson(
+  curlData: { url: string; method: string; headers: Record<string, string>; body?: string }, 
+  originalCurl: string,
+  instance: N8nInstance
+): WebhookJson {
   const urlObj = new URL(curlData.url);
   // Extract path after webhook-test
-  const pathMatch = urlObj.pathname.match(/\/webhook-test(.*)/);
-  const path = pathMatch ? pathMatch[1] : urlObj.pathname;
+  const pathMatch = urlObj.pathname.match(/\/webhook-test(.*)/)?.slice(1) || [urlObj.pathname];
+  const path = pathMatch[0];
   
   const parsedBody = curlData.body ? JSON.parse(curlData.body) : {};
   
@@ -81,12 +90,17 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
           executionMode: "test"
         }
       ]
+    },
+    meta: {
+      instanceId: instance.id,
+      instanceName: instance.name
     }
   };
 }
 
 export default function Command() {
   const [curlCommand, setCurlCommand] = useState("");
+  const [selectedInstance, setSelectedInstance] = useState<N8nInstance>();
 
   useEffect(() => {
     const initClipboard = async () => {
@@ -107,16 +121,26 @@ export default function Command() {
   }, []);
 
   const handleSubmit = async () => {
+    if (!selectedInstance) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "No instance selected",
+        message: "Please select an n8n instance",
+      });
+      return;
+    }
+
     try {
       const trimmedCommand = curlCommand.trim();
       const parsedCurl = parseCurlCommand(trimmedCommand);
-      const webhookJson = generateWebhookJson(parsedCurl, trimmedCommand);
+      const webhookJson = generateWebhookJson(parsedCurl, trimmedCommand, selectedInstance);
       
       await Clipboard.copy(JSON.stringify(webhookJson, null, 2));
       
       await showToast({
         style: Toast.Style.Success,
         title: "Webhook JSON copied to clipboard",
+        message: `For instance: ${selectedInstance.name}`,
       });
     } catch (error) {
       await showToast({
@@ -135,6 +159,10 @@ export default function Command() {
         </ActionPanel>
       }
     >
+      <InstanceSelector
+        onInstanceSelect={setSelectedInstance}
+        selectedInstanceId={selectedInstance?.id}
+      />
       <Form.TextArea
         id="curl"
         title="Curl Command"
@@ -144,4 +172,4 @@ export default function Command() {
       />
     </Form>
   );
-} 
+}
