@@ -1,15 +1,3 @@
-export interface N8nInstance {
-  id: string;
-  name: string;
-  baseUrl: string;
-  apiKey: string;
-  color?: string;
-}
-
-export interface Preferences {
-  instances: N8nInstance[];
-}
-
 export interface WorkflowItem {
   id: string;
   instanceId: string;
@@ -20,6 +8,21 @@ export interface WorkflowItem {
   subtitle: string;
   accessory: string;
   keywords: string[];
+}
+
+export interface N8nInstance {
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  color?: string;
+}
+
+export interface StoredInstance extends N8nInstance {
+  id: string;
+}
+
+export interface Preferences {
+  instances: N8nInstance[];
 }
 
 export interface WorkflowResponse {

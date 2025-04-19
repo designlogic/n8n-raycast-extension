@@ -2,14 +2,20 @@ import { ActionPanel, Action, Icon, List, Cache, showToast, Toast, Color } from 
 import { useEffect, useState } from "react";
 import fetch from "node-fetch";
 import { WorkflowItem, Preferences, WorkflowResponse, N8nInstance } from "./types";
-import { CACHE_KEY, getApiEndpoints, getDefaultInstanceColor } from "./config";
+import { CACHE_KEY, getApiEndpoints } from "./config";
 import { sortAlphabetically, formatWorkflowData, filterItems, generateInstanceId } from "./utils";
 import { LocalStorage } from "@raycast/api";
+import { getInstanceStatus, getStatusIcon } from "./utils/instanceStatus";
 
-const INSTANCES_STORAGE_KEY = "n8n_instances";
+const STORAGE_KEY = "n8n_instances";
 
 interface StoredInstance extends N8nInstance {
   id: string;
+}
+
+interface InstanceStatus {
+  isActive: boolean;
+  error?: string;
 }
 
 export default function Command() {
@@ -19,6 +25,7 @@ export default function Command() {
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
   const [instances, setInstances] = useState<StoredInstance[]>([]);
+  const [instanceStatuses, setInstanceStatuses] = useState<Record<string, InstanceStatus>>({});
 
   const cache = new Cache();
 
@@ -33,7 +40,8 @@ export default function Command() {
         {
           id: item.instanceId,
           name: item.instanceName,
-          color: item.instanceColor
+          color: item.instanceColor,
+          status: instanceStatuses[item.instanceId]
         }
       ])
     ).values()
@@ -88,16 +96,28 @@ export default function Command() {
     try {
       const allWorkflows: WorkflowItem[] = [];
       const errors: string[] = [];
+      const newStatuses: Record<string, InstanceStatus> = {};
 
       for (const instance of instances) {
         try {
-          const workflows = await fetchWorkflowsForInstance(instance);
-          const formattedWorkflows = workflows.map(workflow => formatWorkflowData(workflow, instance));
-          allWorkflows.push(...formattedWorkflows);
+          const status = await getInstanceStatus(instance.id);
+          newStatuses[instance.id] = {
+            isActive: status?.isActive || false,
+            error: status?.error
+          };
+
+          if (status?.isActive) {
+            const workflows = await fetchWorkflowsForInstance(instance);
+            const formattedWorkflows = workflows.map(workflow => formatWorkflowData(workflow, instance));
+            allWorkflows.push(...formattedWorkflows);
+          }
         } catch (error) {
           errors.push(`${instance.name}: ${error instanceof Error ? error.message : "Unknown error"}`);
+          newStatuses[instance.id] = { isActive: false, error: error instanceof Error ? error.message : "Unknown error" };
         }
       }
+
+      setInstanceStatuses(newStatuses);
 
       if (allWorkflows.length > 0) {
         const sortedWorkflows = sortAlphabetically(allWorkflows);
@@ -140,7 +160,7 @@ export default function Command() {
   useEffect(() => {
     async function loadInstances() {
       try {
-        const stored = await LocalStorage.getItem<string>(INSTANCES_STORAGE_KEY);
+        const stored = await LocalStorage.getItem<string>(STORAGE_KEY);
         if (stored) {
           setInstances(JSON.parse(stored));
         }
@@ -210,9 +230,9 @@ export default function Command() {
           {uniqueInstances.map((instance) => (
             <List.Dropdown.Item
               key={instance.id}
-              title={instance.name}
+              title={`${instance.name} ${getStatusIcon(instance.status)}`}
               value={instance.id}
-              icon={{ source: Icon.Dot, tintColor: instance.color as Color }}
+              icon={{ source: Icon.Circle, tintColor: instance.color as Color }}
             />
           ))}
         </List.Dropdown>
@@ -256,12 +276,12 @@ export default function Command() {
         {filterItems(items, "", selectedTag, selectedInstance).map((item) => (
           <List.Item
             key={`${item.instanceId}-${item.id}`}
-            icon={{ source: Icon.Dot, tintColor: item.instanceColor as Color }}
+            icon={{ source: Icon.Circle, tintColor: item.instanceColor as Color }}
             title={item.title}
             subtitle={item.subtitle}
             accessories={[
               { icon: Icon.Hashtag, text: item.accessory },
-              { text: item.instanceName }
+              { text: `${item.instanceName} ${getStatusIcon(instanceStatuses[item.instanceId])}` }
             ]}
             actions={
               <ActionPanel>
