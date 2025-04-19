@@ -8,77 +8,119 @@ interface LegacyPreferences {
   baseUrl: string;
 }
 
+interface MigrationState {
+  migrated: boolean;
+  timestamp: string;
+  legacyBaseUrl?: string;
+}
+
+async function showMigrationToast(style: Toast.Style, title: string, message?: string): Promise<boolean> {
+  try {
+    await showToast({ style, title, message });
+    return true;
+  } catch (error) {
+    console.error("Toast error:", error instanceof Error ? error.message : "Unknown error");
+    return false;
+  }
+}
+
 export async function migrateToMultiInstance(): Promise<boolean> {
   const cache = new Cache();
   
   try {
+    // Check if we're already using new preferences
+    const newPrefs = getPreferenceValues<Preferences>();
+    if (newPrefs?.instances) {
+      return false; // Already using new format
+    }
+
     // Attempt to get legacy preferences
     const prefs = getPreferenceValues<LegacyPreferences>();
-    
-    if (prefs.apiKey && prefs.baseUrl) {
-      // User has legacy configuration
-      await showToast({
-        style: Toast.Style.Animated,
-        title: "Migrating configuration...",
-      });
+    if (!prefs?.apiKey || !prefs?.baseUrl || !prefs.baseUrl.trim()) {
+      return false;
+    }
 
-      // Create new instance from legacy config
-      const defaultInstance: N8nInstance = {
-        id: generateInstanceId(prefs.baseUrl),
-        name: "Default",
-        baseUrl: prefs.baseUrl,
-        apiKey: prefs.apiKey,
-        color: "#FF6B6B" // Default color
-      };
+    // Show initial toast
+    if (!await showMigrationToast(Toast.Style.Animated, "Migrating configuration...")) {
+      return false;
+    }
 
-      // Clear old cache
+    // Store migration state
+    const migrationState: MigrationState = {
+      migrated: true,
+      timestamp: new Date().toISOString(),
+      legacyBaseUrl: prefs.baseUrl
+    };
+
+    try {
+      await cache.set(INSTANCE_CACHE_KEY, JSON.stringify(migrationState));
+    } catch (error) {
+      console.error("Migration error:", error instanceof Error ? error.message : "Unknown error");
+      await showMigrationToast(
+        Toast.Style.Failure,
+        "Migration Failed",
+        "Failed to save migration state"
+      );
+      return false;
+    }
+
+    let success = true;
+    // Clear old cache
+    try {
       const oldCache = await cache.get(CACHE_KEY);
       if (oldCache) {
         await cache.remove(CACHE_KEY);
       }
-
-      // Store migration state
-      await cache.set(INSTANCE_CACHE_KEY, JSON.stringify({
-        migrated: true,
-        timestamp: new Date().toISOString(),
-        legacyBaseUrl: prefs.baseUrl
-      }));
-
-      await showToast({
-        style: Toast.Style.Success,
-        title: "Migration Complete",
-        message: "Please update your instance configuration in preferences"
-      });
-
-      return true;
+    } catch (error) {
+      success = false;
+      console.error("Migration error:", error instanceof Error ? error.message : "Unknown error");
+      await showMigrationToast(
+        Toast.Style.Failure,
+        "Migration Failed",
+        "Failed to clear old cache"
+      );
     }
 
-    // Check if we're already using new preferences
-    const newPrefs = getPreferenceValues<Preferences>();
-    if (newPrefs.instances) {
-      return false; // Already using new format
+    if (!success) return false;
+
+    if (!await showMigrationToast(
+      Toast.Style.Success,
+      "Migration Complete",
+      "Please update your instance configuration in preferences"
+    )) {
+      return false;
     }
+
+    return true;
 
   } catch (error) {
-    console.error("Migration error:", error);
-    await showToast({
-      style: Toast.Style.Failure,
-      title: "Migration Failed",
-      message: "Please configure your n8n instances manually"
-    });
+    console.error("Migration error:", error instanceof Error ? error.message : "Unknown error");
+    await showMigrationToast(
+      Toast.Style.Failure,
+      "Migration Failed",
+      "Please configure your n8n instances manually"
+    );
+    return false;
   }
-
-  return false;
 }
 
 export async function checkMigrationNeeded(): Promise<boolean> {
   const cache = new Cache();
-  const migrationState = await cache.get(INSTANCE_CACHE_KEY);
-  
-  if (migrationState) {
-    const state = JSON.parse(migrationState);
-    return !state.migrated;
+  try {
+    const migrationState = await cache.get(INSTANCE_CACHE_KEY);
+    if (!migrationState) {
+      return true;
+    }
+    
+    try {
+      const state = JSON.parse(migrationState) as MigrationState;
+      return !state.migrated;
+    } catch (error) {
+      console.error("Migration state parse error:", error instanceof Error ? error.message : "Unknown error");
+      return true;
+    }
+  } catch (error) {
+    console.error("Migration check error:", error instanceof Error ? error.message : "Unknown error");
+    return true;
   }
-  
-  return true;
 }

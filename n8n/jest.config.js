@@ -6,5 +6,21 @@ module.exports = {
   testMatch: ["**/__tests__/**/*.[jt]s?(x)", "**/?(*.)+(spec|test).[jt]s?(x)"],
   transform: {
     "^.+\\.(ts|tsx)$": "ts-jest"
+  },
+  collectCoverage: true,
+  coverageDirectory: "coverage",
+  coverageReporters: ["text", "lcov", "html"],
+  coveragePathIgnorePatterns: [
+    "/node_modules/",
+    "/__mocks__/",
+    "/dist/"
+  ],
+  coverageThreshold: {
+    global: {
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80
+    }
   }
 };

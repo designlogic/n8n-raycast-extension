@@ -29,5 +29,8 @@ export const DEFAULT_INSTANCE_COLORS = [
 ];
 
 export const getDefaultInstanceColor = (index: number): string => {
-  return DEFAULT_INSTANCE_COLORS[index % DEFAULT_INSTANCE_COLORS.length];
+  const length = DEFAULT_INSTANCE_COLORS.length;
+  // Handle negative indices by wrapping around from the end
+  const normalizedIndex = ((index % length) + length) % length;
+  return DEFAULT_INSTANCE_COLORS[normalizedIndex];
 };
