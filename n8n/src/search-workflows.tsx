@@ -1,10 +1,16 @@
-import { ActionPanel, Action, Icon, List, Cache, getPreferenceValues, showToast, Toast, Color } from "@raycast/api";
+import { ActionPanel, Action, Icon, List, Cache, showToast, Toast, Color } from "@raycast/api";
 import { useEffect, useState } from "react";
 import fetch from "node-fetch";
-import { migrateToMultiInstance, checkMigrationNeeded } from "./migration";
 import { WorkflowItem, Preferences, WorkflowResponse, N8nInstance } from "./types";
 import { CACHE_KEY, getApiEndpoints, getDefaultInstanceColor } from "./config";
 import { sortAlphabetically, formatWorkflowData, filterItems, generateInstanceId } from "./utils";
+import { LocalStorage } from "@raycast/api";
+
+const INSTANCES_STORAGE_KEY = "n8n_instances";
+
+interface StoredInstance extends N8nInstance {
+  id: string;
+}
 
 export default function Command() {
   // State
@@ -12,37 +18,29 @@ export default function Command() {
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
+  const [instances, setInstances] = useState<StoredInstance[]>([]);
 
   const cache = new Cache();
-  const preferences = getPreferenceValues<Preferences>();
 
-  // Check for and handle migration if needed
-  useEffect(() => {
-    async function checkMigration() {
-      if (await checkMigrationNeeded()) {
-        await migrateToMultiInstance();
-      }
-    }
-    checkMigration();
-  }, []);
-
-  // Ensure instances have IDs and colors
-  const instances: N8nInstance[] = preferences.instances.map((instance, index) => ({
-    ...instance,
-    id: generateInstanceId(instance.baseUrl),
-    color: instance.color || getDefaultInstanceColor(index)
-  }));
-
-  // Get unique tags and instances from workflow items
+  // Get unique tags from workflow items
   const availableTags = [...new Set(items.flatMap(item => item.keywords))].sort();
-  const uniqueInstances = [...new Set(items.map(item => ({
-    id: item.instanceId,
-    name: item.instanceName,
-    color: item.instanceColor
-  })))];
+  
+  // Get unique instances ensuring no duplicates
+  const uniqueInstances = Array.from(
+    new Map(
+      items.map(item => [
+        item.instanceId,
+        {
+          id: item.instanceId,
+          name: item.instanceName,
+          color: item.instanceColor
+        }
+      ])
+    ).values()
+  );
 
   // API Functions
-  const fetchWorkflowsForInstance = async (instance: N8nInstance) => {
+  const fetchWorkflowsForInstance = async (instance: StoredInstance) => {
     let allWorkflows: WorkflowResponse['data'] = [];
     let cursor: string | undefined;
     const limit = 250;
@@ -68,7 +66,7 @@ export default function Command() {
         );
       }
 
-      const data = JSON.parse(await response.text()) as { data: WorkflowResponse['data']; nextCursor?: string };
+      const data = await response.json() as { data: WorkflowResponse['data']; nextCursor?: string };
       allWorkflows = [...allWorkflows, ...(data.data || [])];
       cursor = data.nextCursor;
 
@@ -97,7 +95,7 @@ export default function Command() {
           const formattedWorkflows = workflows.map(workflow => formatWorkflowData(workflow, instance));
           allWorkflows.push(...formattedWorkflows);
         } catch (error) {
-          errors.push(`${instance.name}: ${error.message}`);
+          errors.push(`${instance.name}: ${error instanceof Error ? error.message : "Unknown error"}`);
         }
       }
 
@@ -138,9 +136,29 @@ export default function Command() {
     setSelectedInstance(newInstance);
   };
 
+  // Load Instances
+  useEffect(() => {
+    async function loadInstances() {
+      try {
+        const stored = await LocalStorage.getItem<string>(INSTANCES_STORAGE_KEY);
+        if (stored) {
+          setInstances(JSON.parse(stored));
+        }
+      } catch (error) {
+        console.error("Error loading instances:", error);
+      }
+    }
+    loadInstances();
+  }, []);
+
   // Initial Load
   useEffect(() => {
     async function loadInitialData() {
+      if (instances.length === 0) {
+        setIsLoading(false);
+        return;
+      }
+
       const cachedData = await cache.get(CACHE_KEY);
       
       if (cachedData) {
@@ -155,7 +173,27 @@ export default function Command() {
       }
     }
     loadInitialData();
-  }, []);
+  }, [instances]);
+
+  if (instances.length === 0) {
+    return (
+      <List>
+        <List.EmptyView
+          icon={Icon.ExclamationMark}
+          title="No n8n instances configured"
+          description="Use the 'Manage n8n Instances' command to add your first instance"
+          actions={
+            <ActionPanel>
+              <Action.Open
+                title="Configure Instances"
+                target="raycast://extensions/designlogicsolutions/n8n/manage-instances"
+              />
+            </ActionPanel>
+          }
+        />
+      </List>
+    );
+  }
 
   return (
     <List
