@@ -12,10 +12,12 @@ I built this extension for Raycast to make it easier for me to search for workfl
 
 ## Current Commands
 
-- Search and browse workflows with tag filtering
-- Create new workflows
-- Convert JSON and manual mappings
-- Create and parse webhooks
+- Search workflows with tag filtering
+- Create new workflow
+- Convert Edit Node JSON to manual mappings
+- Convert Edit Node manual mappings to JSON
+- Create a Webhook Node from curl
+- Extract curl from a Webhook Node
 
 ## Development Setup
 I have not submitted this to the Raycast store yet so you will need to run it from your local environment.  
