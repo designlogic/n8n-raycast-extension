@@ -22,6 +22,7 @@ export const formatWorkflowData = (
       instance.name,
       ...validTags
     ],
+    active: workflow.active,
   };
 };
 

@@ -8,6 +8,8 @@ export interface WorkflowItem {
   subtitle: string;
   accessory: string;
   keywords: string[];
+  active: boolean;
+  hasTrigger?: boolean;
 }
 
 export interface N8nInstance {

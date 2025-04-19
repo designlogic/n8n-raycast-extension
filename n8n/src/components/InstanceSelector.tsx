@@ -1,10 +1,18 @@
-import { List, Form } from "@raycast/api";
-import { getPreferenceValues } from "@raycast/api";
-import { Preferences, N8nInstance } from "../types";
+import { List, Form, Icon, Color } from "@raycast/api";
+import { getPreferenceValues, LocalStorage } from "@raycast/api";
+import { N8nInstance } from "../types";
 import { generateInstanceId } from "../utils";
+import { useState, useEffect } from "react";
+import { getStatusIcon, getInstanceStatus } from "../utils/instanceStatus";
+
+const STORAGE_KEY = "n8n_instances";
+
+interface StoredInstance extends N8nInstance {
+  id: string;
+}
 
 interface InstanceSelectorProps {
-  onInstanceSelect: (instance: N8nInstance) => void;
+  onInstanceSelect: (instance: StoredInstance) => void;
   selectedInstanceId?: string;
   dropdownTitle?: string;
   dropdownPlaceholder?: string;
@@ -16,11 +24,42 @@ export function InstanceSelector({
   dropdownTitle = "n8n Instance",
   dropdownPlaceholder = "Select n8n instance"
 }: InstanceSelectorProps) {
-  const preferences = getPreferenceValues<Preferences>();
-  const instances = preferences.instances.map(instance => ({
-    ...instance,
-    id: generateInstanceId(instance.baseUrl)
-  }));
+  const [instances, setInstances] = useState<StoredInstance[]>([]);
+  const [instanceStatuses, setInstanceStatuses] = useState<Record<string, { isActive: boolean; error?: string }>>({});
+
+  useEffect(() => {
+    async function loadInstances() {
+      try {
+        const stored = await LocalStorage.getItem<string>(STORAGE_KEY);
+        if (stored) {
+          const loadedInstances = JSON.parse(stored);
+          setInstances(loadedInstances);
+
+          // Load instance statuses
+          const statuses: Record<string, { isActive: boolean; error?: string }> = {};
+          for (const instance of loadedInstances) {
+            const status = await getInstanceStatus(instance.id);
+            if (status) {
+              statuses[instance.id] = { isActive: status.isActive, error: status.error };
+            }
+          }
+          setInstanceStatuses(statuses);
+        }
+      } catch (error) {
+        console.error("Error loading instances:", error);
+      }
+    }
+    loadInstances();
+  }, []);
+
+  if (instances.length === 0) {
+    return (
+      <Form.Description
+        title="No Instances Configured"
+        text="Use the 'Manage n8n Instances' command to add your first instance"
+      />
+    );
+  }
 
   return (
     <Form.Dropdown
@@ -39,7 +78,8 @@ export function InstanceSelector({
         <Form.Dropdown.Item
           key={instance.id}
           value={instance.id}
-          title={instance.name}
+          title={`${instance.name} ${getStatusIcon(instanceStatuses[instance.id])}`}
+          icon={{ source: Icon.Circle, tintColor: instance.color as Color }}
         />
       ))}
     </Form.Dropdown>
@@ -55,11 +95,33 @@ export function InstanceListDropdown({
   selectedInstanceId?: string;
   tooltip?: string;
 }) {
-  const preferences = getPreferenceValues<Preferences>();
-  const instances = preferences.instances.map(instance => ({
-    ...instance,
-    id: generateInstanceId(instance.baseUrl)
-  }));
+  const [instances, setInstances] = useState<StoredInstance[]>([]);
+  const [instanceStatuses, setInstanceStatuses] = useState<Record<string, { isActive: boolean; error?: string }>>({});
+
+  useEffect(() => {
+    async function loadInstances() {
+      try {
+        const stored = await LocalStorage.getItem<string>(STORAGE_KEY);
+        if (stored) {
+          const loadedInstances = JSON.parse(stored);
+          setInstances(loadedInstances);
+
+          // Load instance statuses
+          const statuses: Record<string, { isActive: boolean; error?: string }> = {};
+          for (const instance of loadedInstances) {
+            const status = await getInstanceStatus(instance.id);
+            if (status) {
+              statuses[instance.id] = { isActive: status.isActive, error: status.error };
+            }
+          }
+          setInstanceStatuses(statuses);
+        }
+      } catch (error) {
+        console.error("Error loading instances:", error);
+      }
+    }
+    loadInstances();
+  }, []);
 
   return (
     <List.Dropdown
@@ -71,8 +133,9 @@ export function InstanceListDropdown({
       {instances.map((instance) => (
         <List.Dropdown.Item
           key={instance.id}
-          title={instance.name}
+          title={`${instance.name} ${getStatusIcon(instanceStatuses[instance.id])}`}
           value={instance.id}
+          icon={{ source: Icon.Circle, tintColor: instance.color as Color }}
         />
       ))}
     </List.Dropdown>

@@ -5,7 +5,14 @@ import { WorkflowItem, Preferences, WorkflowResponse, N8nInstance } from "./type
 import { CACHE_KEY, getApiEndpoints } from "./config";
 import { sortAlphabetically, formatWorkflowData, filterItems, generateInstanceId } from "./utils";
 import { LocalStorage } from "@raycast/api";
-import { getInstanceStatus, getStatusIcon } from "./utils/instanceStatus";
+import { getInstanceStatus, getStatusIcon, updateAllInstanceStatuses, startStatusAutoRefresh } from "./utils/instanceStatus";
+
+// Custom function to get status icon - wrapper around the imported getStatusIcon
+function getInstanceStatusIcon(status: InstanceStatus | undefined | null, instanceId: string): string {
+  if (!status) return "❓"; // Unknown status
+  if (status.isLoading) return "⏳"; // Loading
+  return status.isActive ? "🟢" : "🔴"; // Active or Inactive
+}
 
 const STORAGE_KEY = "n8n_instances";
 
@@ -16,6 +23,7 @@ interface StoredInstance extends N8nInstance {
 interface InstanceStatus {
   isActive: boolean;
   error?: string;
+  isLoading?: boolean;
 }
 
 export default function Command() {
@@ -85,8 +93,15 @@ export default function Command() {
 
   // Data Management Functions
   const updateWorkflowData = async (workflows: WorkflowItem[]) => {
-    await cache.set(CACHE_KEY, JSON.stringify(workflows));
-    setItems(workflows);
+    // Set the initial hasTrigger value to undefined for all workflows
+    // We'll populate this as we check each workflow
+    const workflowsWithTriggerStatus = workflows.map(workflow => ({
+      ...workflow,
+      hasTrigger: undefined
+    }));
+    
+    await cache.set(CACHE_KEY, JSON.stringify(workflowsWithTriggerStatus));
+    setItems(workflowsWithTriggerStatus);
   };
 
   const fetchData = async (forceFresh = false) => {
@@ -155,6 +170,149 @@ export default function Command() {
   const handleInstanceChange = (newInstance: string | null) => {
     setSelectedInstance(newInstance);
   };
+  // Toggle workflow active status
+  // Helper function to check if a workflow has trigger nodes
+  const checkForTriggerNodes = (workflowNodes: any[]): boolean => {
+    return workflowNodes?.some(
+      (node: any) => node.type?.startsWith('n8n-nodes-base.trigger') || 
+                     node.type?.includes('webhook') ||
+                     node.type?.includes('trigger')
+    ) || false;
+  };
+
+  // Update workflow trigger status in local state
+  const updateWorkflowTriggerStatus = (workflowId: string, instanceId: string, hasTrigger: boolean): void => {
+    setItems(prevItems => 
+      prevItems.map(item => {
+        if (item.id === workflowId && item.instanceId === instanceId) {
+          return {
+            ...item,
+            hasTrigger
+          };
+        }
+        return item;
+      })
+    );
+  };
+
+  // Toggle workflow active status
+  const toggleWorkflowStatus = async (workflow: WorkflowItem) => {
+    try {
+      const instance = instances.find(i => i.id === workflow.instanceId);
+      if (!instance) {
+        throw new Error(`Instance ${workflow.instanceId} not found`);
+      }
+
+      await showToast({
+        style: Toast.Style.Animated,
+        title: `${workflow.active ? "Deactivating" : "Activating"} workflow`,
+      });
+      
+      const API_ENDPOINTS = getApiEndpoints(instance);
+      
+      // Check if we're trying to activate and need to verify trigger nodes
+      if (!workflow.active) {
+        // First, fetch the workflow to check if it can be activated
+        const workflowDetailsResponse = await fetch(`${API_ENDPOINTS.workflows}/${workflow.id}`, {
+          method: 'GET',
+          headers: {
+            "X-N8N-API-KEY": instance.apiKey,
+            "Accept": "application/json"
+          }
+        });
+        
+        if (!workflowDetailsResponse.ok) {
+          throw new Error(`Failed to get workflow details: ${workflowDetailsResponse.statusText}`);
+        }
+        
+        const workflowDetails = await workflowDetailsResponse.json();
+        
+        // Check if workflow has a trigger node (required for activation)
+        const hasTriggerNode = checkForTriggerNodes(workflowDetails?.nodes || []);
+        
+        // Update the workflow's trigger status in our local state
+        updateWorkflowTriggerStatus(workflow.id, workflow.instanceId, hasTriggerNode);
+        
+        if (!hasTriggerNode) {
+          throw new Error('This workflow cannot be activated because it does not have a trigger node. Add a trigger node like "Webhook" or "Cron" to make it activatable.');
+        }
+      }
+      // Use the correct endpoint based on whether we want to activate or deactivate
+      const activationEndpoint = workflow.active ? 'deactivate' : 'activate';
+      const response = await fetch(`${API_ENDPOINTS.workflows}/${workflow.id}/${activationEndpoint}`, {
+        method: 'POST',
+        headers: {
+          "X-N8N-API-KEY": instance.apiKey,
+          "Accept": "application/json"
+        }
+      });
+      
+      if (!response.ok) {
+        // Try to get more detailed error information
+        const errorText = await response.text();
+        let errorMessage = response.statusText;
+        
+        try {
+          // Try to parse the error response as JSON
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.message || errorJson.error || errorMessage;
+        } catch (e) {
+          // If not valid JSON, use text as is
+          errorMessage = errorText || errorMessage;
+        }
+        
+        if (response.status === 400) {
+          // For 400 Bad Request, provide a more user-friendly message
+          if (errorMessage.includes('trigger') || !hasTriggerNode) {
+            throw new Error('This workflow cannot be activated because it does not have a trigger node or its trigger node is not properly configured.');
+          }
+        }
+        
+        throw new Error(`Failed to ${workflow.active ? "deactivate" : "activate"} workflow: ${errorMessage}`);
+      }
+
+      // Update local state
+      const updatedItems = items.map(item => {
+        if (item.id === workflow.id && item.instanceId === workflow.instanceId) {
+          return {
+            ...item,
+            active: !item.active,
+            subtitle: `${item.instanceName} ${!item.active ? "• Active" : "• Inactive"}`,
+          };
+        }
+        return item;
+      });
+
+      setItems(updatedItems);
+      await cache.set(CACHE_KEY, JSON.stringify(updatedItems));
+
+      await showToast({
+        style: Toast.Style.Success,
+        title: `Workflow ${!workflow.active ? "activated" : "deactivated"}`,
+        message: workflow.title
+      });
+
+    } catch (error) {
+      console.error("Error toggling workflow status:", error);
+      
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      
+      // Check for specific error cases to provide better guidance
+      if (errorMessage.includes('trigger node')) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "Cannot Activate Workflow",
+          message: "This workflow needs a trigger node. Open the workflow in n8n and add a Webhook or Cron node."
+        });
+      } else {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: `Failed to ${workflow.active ? "deactivate" : "activate"} workflow`,
+          message: errorMessage
+        });
+      }
+    }
+  };
 
   // Load Instances
   useEffect(() => {
@@ -170,6 +328,119 @@ export default function Command() {
     }
     loadInstances();
   }, []);
+  
+  // Update instance statuses when instances change
+  useEffect(() => {
+    async function updateStatuses() {
+      if (instances.length === 0) return;
+      
+      console.log("Updating instance statuses...");
+      
+      // Set loading state for each instance
+      const loadingStatuses: Record<string, InstanceStatus> = {};
+      for (const instance of instances) {
+        loadingStatuses[instance.id] = {
+          ...(instanceStatuses[instance.id] || { isActive: false }),
+          isLoading: true
+        };
+        console.log(`Setting loading state for ${instance.name} (${instance.id})`);
+      }
+      setInstanceStatuses(loadingStatuses);
+      
+      try {
+        // First, try to get cached statuses for immediate display
+        for (const instance of instances) {
+          try {
+            const cachedStatus = await getInstanceStatus(instance.id);
+            if (cachedStatus) {
+              console.log(`Loaded cached status for ${instance.name}: ${cachedStatus.isActive ? 'active' : 'inactive'}`);
+              setInstanceStatuses(prev => ({
+                ...prev,
+                [instance.id]: {
+                  isActive: cachedStatus.isActive,
+                  error: cachedStatus.error,
+                  isLoading: true // Still loading fresh status
+                }
+              }));
+            }
+          } catch (err) {
+            console.log(`No cached status for ${instance.name}`);
+          }
+        }
+        
+        // Now update all instance statuses in the background
+        console.log("Checking current status of all instances...");
+        try {
+          await updateAllInstanceStatuses(instances);
+          console.log("All instance statuses updated successfully");
+          
+          // Force immediate refresh of the list to show updated status icons
+          setItems(prevItems => [...prevItems]);
+        } catch (updateError) {
+          console.error("Error updating instance statuses:", updateError);
+        }
+        
+        // Load the updated statuses into state
+        const newStatuses: Record<string, InstanceStatus> = {};
+        for (const instance of instances) {
+          try {
+            const status = await getInstanceStatus(instance.id);
+            console.log(`Status for ${instance.name}: `, status);
+            
+            if (status) {
+              newStatuses[instance.id] = {
+                isActive: status.isActive,
+                error: status.error,
+                isLoading: false
+              };
+            } else {
+              console.log(`No status found for ${instance.name}, marking as inactive`);
+              newStatuses[instance.id] = {
+                isActive: false,
+                error: "Status check failed",
+                isLoading: false
+              };
+            }
+          } catch (instanceError) {
+            console.error(`Error getting status for ${instance.name}:`, instanceError);
+            newStatuses[instance.id] = {
+              isActive: false,
+              error: instanceError instanceof Error ? instanceError.message : "Unknown error",
+              isLoading: false
+            };
+          }
+        }
+        
+        console.log("Setting final instance statuses:", newStatuses);
+        setInstanceStatuses(newStatuses);
+      } catch (error) {
+        console.error("Error in status update process:", error);
+        // Update statuses to show error state
+        const errorStatuses: Record<string, InstanceStatus> = {};
+        for (const instance of instances) {
+          errorStatuses[instance.id] = {
+            isActive: false,
+            error: "Status check failed",
+            isLoading: false
+          };
+        }
+        setInstanceStatuses(errorStatuses);
+      }
+    }
+    
+    // Check status immediately when instances are loaded or changed
+    updateStatuses();
+    
+    // Start auto-refresh of statuses
+    console.log("Starting status auto-refresh");
+    const cleanup = startStatusAutoRefresh(instances);
+    
+    // Cleanup function
+    return () => {
+      console.log("Cleaning up status refresh interval");
+      cleanup();
+    };
+  }, [instances]);
 
   // Initial Load
   useEffect(() => {
@@ -230,9 +501,10 @@ export default function Command() {
           {uniqueInstances.map((instance) => (
             <List.Dropdown.Item
               key={instance.id}
-              title={`${instance.name} ${getStatusIcon(instance.status)}`}
+              title={`${instance.name} ${getInstanceStatusIcon(instance.status, instance.id)}`}
               value={instance.id}
               icon={{ source: Icon.Circle, tintColor: instance.color as Color }}
+              tooltip={instance.status?.error ? instance.status.error : (instance.status?.isActive ? "Instance is online" : "Instance is offline or unreachable")}
             />
           ))}
         </List.Dropdown>
@@ -281,7 +553,14 @@ export default function Command() {
             subtitle={item.subtitle}
             accessories={[
               { icon: Icon.Hashtag, text: item.accessory },
-              { text: `${item.instanceName} ${getStatusIcon(instanceStatuses[item.instanceId])}` }
+              { 
+                icon: item.active ? Icon.Circle : (item.hasTrigger === false ? Icon.ExclamationMark : Icon.MinusCircle), 
+                text: item.active ? "Active" : (item.hasTrigger === false ? "No Trigger" : "Inactive"), 
+                tooltip: item.hasTrigger === false 
+                  ? "This workflow cannot be activated because it does not have a trigger node" 
+                  : `Workflow is ${item.active ? "active" : "inactive"}`
+              },
+              { text: `${item.instanceName} ${getInstanceStatusIcon(instanceStatuses[item.instanceId], item.instanceId)}` }
             ]}
             actions={
               <ActionPanel>
@@ -293,6 +572,26 @@ export default function Command() {
                     apiKey: "" 
                   }).workflowUrl(item.id)} 
                 />
+                {item.hasTrigger === false && !item.active ? (
+                  <Action
+                    title="Cannot Activate (No Trigger Node)"
+                    icon={Icon.ExclamationMark}
+                    onAction={() => {
+                      showToast({
+                        style: Toast.Style.Failure,
+                        title: "Cannot Activate Workflow",
+                        message: "This workflow requires a trigger node like Webhook or Cron to be activated."
+                      });
+                    }}
+                  />
+                ) : (
+                  <Action
+                    title={item.active ? "Deactivate Workflow" : "Activate Workflow"}
+                    icon={item.active ? Icon.MinusCircle : Icon.Circle}
+                    onAction={() => toggleWorkflowStatus(item)}
+                    shortcut={{ modifiers: ["cmd"], key: "t" }}
+                  />
+                )}
                 <Action.CopyToClipboard
                   title="Copy Workflow URL"
                   content={getApiEndpoints({

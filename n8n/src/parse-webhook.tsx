@@ -1,7 +1,9 @@
-import { showToast, Toast, Clipboard, Form, ActionPanel, Action, getSelectedText } from "@raycast/api";
+import { showToast, Toast, Clipboard, Form, ActionPanel, Action, getSelectedText, Icon } from "@raycast/api";
 import { useState, useEffect } from "react";
+import { StoredInstance } from "./types";
 import { InstanceSelector } from "./components/InstanceSelector";
-import { N8nInstance } from "./types";
+import fetch from "node-fetch";
+import { getApiEndpoints } from "./config";
 
 interface WebhookNode {
   parameters: {
@@ -19,6 +21,8 @@ interface WebhookNode {
 }
 
 interface WebhookJson {
+  id?: string;      // Workflow ID if saved
+  active?: boolean; // Workflow active state if saved
   nodes: WebhookNode[];
   connections: Record<string, unknown>;
   pinData: {
@@ -34,7 +38,27 @@ interface WebhookJson {
   };
 }
 
-function generateCurlCommand(webhookJson: WebhookJson, selectedInstance?: N8nInstance): string {
+async function toggleWorkflowActive(instance: StoredInstance, workflowId: string, active: boolean): Promise<void> {
+  if (!workflowId) {
+    throw new Error("Workflow ID not found");
+  }
+
+  const endpoints = getApiEndpoints(instance);
+  const response = await fetch(`${endpoints.workflows}/${workflowId}`, {
+    method: 'PATCH',
+    headers: {
+      'X-N8N-API-KEY': instance.apiKey,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ active })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to ${active ? 'activate' : 'deactivate'} workflow: ${response.statusText}`);
+  }
+}
+
+function generateCurlCommand(webhookJson: WebhookJson, selectedInstance?: StoredInstance): string {
   const webhookNode = webhookJson.nodes[0];
   const nodeName = webhookNode.name;
   const pinData = webhookJson.pinData[nodeName]?.[0];
@@ -79,8 +103,10 @@ function generateCurlCommand(webhookJson: WebhookJson, selectedInstance?: N8nIns
 
 export default function Command() {
   const [jsonInput, setJsonInput] = useState("");
-  const [selectedInstance, setSelectedInstance] = useState<N8nInstance>();
+  const [selectedInstance, setSelectedInstance] = useState<StoredInstance>();
   const [originalInstanceName, setOriginalInstanceName] = useState<string>();
+  const [workflowId, setWorkflowId] = useState<string>();
+  const [isActive, setIsActive] = useState<boolean>();
 
   useEffect(() => {
     const init = async () => {
@@ -108,8 +134,14 @@ export default function Command() {
           if (parsed.meta?.instanceName) {
             setOriginalInstanceName(parsed.meta.instanceName);
           }
+          if (parsed.id) {
+            setWorkflowId(parsed.id);
+          }
+          if (typeof parsed.active === 'boolean') {
+            setIsActive(parsed.active);
+          }
         } catch (error) {
-          // Ignore parsing errors here
+          console.error("Clipboard content is not valid JSON");
         }
       }
     };
@@ -152,11 +184,47 @@ export default function Command() {
     }
   };
 
+  const handleToggleActive = async () => {
+    if (!workflowId || !selectedInstance) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Cannot toggle workflow state",
+        message: "No workflow ID or instance selected"
+      });
+      return;
+    }
+
+    try {
+      const newState = !isActive;
+      await toggleWorkflowActive(selectedInstance, workflowId, newState);
+      setIsActive(newState);
+      
+      await showToast({
+        style: Toast.Style.Success,
+        title: `Workflow ${newState ? 'activated' : 'deactivated'}`,
+        message: `Successfully ${newState ? 'activated' : 'deactivated'} the workflow`
+      });
+    } catch (error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Failed to toggle workflow state",
+        message: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  };
+
   return (
     <Form
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Convert and Copy" onSubmit={handleSubmit} />
+          {workflowId && selectedInstance && (
+            <Action
+              title={isActive ? "Deactivate Workflow" : "Activate Workflow"}
+              icon={isActive ? Icon.StopCircle : Icon.Circle}
+              onAction={handleToggleActive}
+            />
+          )}
         </ActionPanel>
       }
     >
@@ -179,6 +247,13 @@ export default function Command() {
         value={jsonInput}
         onChange={setJsonInput}
       />
+      {workflowId && (
+        <Form.Description
+          title="Workflow Status"
+          text={`Workflow ID: ${workflowId}
+Current Status: ${isActive ? '🟢 Active' : '🔴 Inactive'}`}
+        />
+      )}
     </Form>
   );
 }
