@@ -1,6 +1,7 @@
 import { ActionPanel, Action, Icon, List, Cache, getPreferenceValues, showToast, Toast, Color } from "@raycast/api";
 import { useEffect, useState } from "react";
 import fetch from "node-fetch";
+import { migrateToMultiInstance, checkMigrationNeeded } from "./migration";
 import { WorkflowItem, Preferences, WorkflowResponse, N8nInstance } from "./types";
 import { CACHE_KEY, getApiEndpoints, getDefaultInstanceColor } from "./config";
 import { sortAlphabetically, formatWorkflowData, filterItems, generateInstanceId } from "./utils";
@@ -14,6 +15,16 @@ export default function Command() {
 
   const cache = new Cache();
   const preferences = getPreferenceValues<Preferences>();
+
+  // Check for and handle migration if needed
+  useEffect(() => {
+    async function checkMigration() {
+      if (await checkMigrationNeeded()) {
+        await migrateToMultiInstance();
+      }
+    }
+    checkMigration();
+  }, []);
 
   // Ensure instances have IDs and colors
   const instances: N8nInstance[] = preferences.instances.map((instance, index) => ({
