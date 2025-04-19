@@ -1,29 +1,41 @@
-import { ActionPanel, Action, Icon, List, Cache, getPreferenceValues, showToast, Toast } from "@raycast/api";
+import { ActionPanel, Action, Icon, List, Cache, getPreferenceValues, showToast, Toast, Color } from "@raycast/api";
 import { useEffect, useState } from "react";
 import fetch from "node-fetch";
-import { WorkflowItem, Preferences, WorkflowResponse } from "./types";
-import { CACHE_KEY, getApiEndpoints } from "./config";
-import { sortAlphabetically, formatWorkflowData } from "./utils";
+import { WorkflowItem, Preferences, WorkflowResponse, N8nInstance } from "./types";
+import { CACHE_KEY, getApiEndpoints, getDefaultInstanceColor } from "./config";
+import { sortAlphabetically, formatWorkflowData, filterItems, generateInstanceId } from "./utils";
 
-// Main Component
 export default function Command() {
   // State
   const [items, setItems] = useState<WorkflowItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+  const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
 
   const cache = new Cache();
   const preferences = getPreferenceValues<Preferences>();
-  const API_ENDPOINTS = getApiEndpoints(preferences.baseUrl);
 
-  // Get unique tags from workflow items
+  // Ensure instances have IDs and colors
+  const instances: N8nInstance[] = preferences.instances.map((instance, index) => ({
+    ...instance,
+    id: generateInstanceId(instance.baseUrl),
+    color: instance.color || getDefaultInstanceColor(index)
+  }));
+
+  // Get unique tags and instances from workflow items
   const availableTags = [...new Set(items.flatMap(item => item.keywords))].sort();
+  const uniqueInstances = [...new Set(items.map(item => ({
+    id: item.instanceId,
+    name: item.instanceName,
+    color: item.instanceColor
+  })))];
 
   // API Functions
-  const fetchWorkflows = async () => {
+  const fetchWorkflowsForInstance = async (instance: N8nInstance) => {
     let allWorkflows: WorkflowResponse['data'] = [];
     let cursor: string | undefined;
     const limit = 250;
+    const API_ENDPOINTS = getApiEndpoints(instance);
 
     do {
       const url = cursor
@@ -32,7 +44,7 @@ export default function Command() {
       
       const response = await fetch(url, {
         headers: {
-          "X-N8N-API-KEY": preferences.apiKey,
+          "X-N8N-API-KEY": instance.apiKey,
           "Accept": "application/json"
         }
       });
@@ -40,8 +52,8 @@ export default function Command() {
       if (!response.ok) {
         throw new Error(
           response.status === 401 
-            ? "Invalid API key. Please check your n8n API key in extension preferences." 
-            : `Failed to fetch workflows: ${response.statusText}`
+            ? `Invalid API key for instance ${instance.name}` 
+            : `Failed to fetch workflows from ${instance.name}: ${response.statusText}`
         );
       }
 
@@ -51,7 +63,7 @@ export default function Command() {
 
     } while (cursor);
 
-    return { data: allWorkflows } as WorkflowResponse;
+    return allWorkflows;
   };
 
   // Data Management Functions
@@ -62,25 +74,41 @@ export default function Command() {
 
   const fetchData = async (forceFresh = false) => {
     setIsLoading(!items.length);
-    console.log("🔄 Fetching fresh data from API...");
+    console.log("🔄 Fetching fresh data from all instances...");
     
     try {
-      const data = await fetchWorkflows();
-      const workflows = Array.isArray(data) ? data : data.data;
-      
-      if (workflows && Array.isArray(workflows)) {
-        const formattedData = sortAlphabetically(workflows.map(formatWorkflowData));
-        await updateWorkflowData(formattedData);
+      const allWorkflows: WorkflowItem[] = [];
+      const errors: string[] = [];
+
+      for (const instance of instances) {
+        try {
+          const workflows = await fetchWorkflowsForInstance(instance);
+          const formattedWorkflows = workflows.map(workflow => formatWorkflowData(workflow, instance));
+          allWorkflows.push(...formattedWorkflows);
+        } catch (error) {
+          errors.push(`${instance.name}: ${error.message}`);
+        }
+      }
+
+      if (allWorkflows.length > 0) {
+        const sortedWorkflows = sortAlphabetically(allWorkflows);
+        await updateWorkflowData(sortedWorkflows);
         
         if (forceFresh) {
           await showToast({
             style: Toast.Style.Success,
             title: "Workflows Refreshed",
-            message: `Found ${formattedData.length} workflows`
+            message: `Found ${sortedWorkflows.length} workflows across ${instances.length} instances`
           });
         }
-      } else {
-        throw new Error("Invalid response format from API");
+      }
+
+      if (errors.length > 0) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "Some instances failed to load",
+          message: errors.join("\n")
+        });
       }
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -93,6 +121,10 @@ export default function Command() {
   // Event Handlers
   const handleTagChange = (newTag: string | null) => {
     setSelectedTag(newTag);
+  };
+
+  const handleInstanceChange = (newInstance: string | null) => {
+    setSelectedInstance(newInstance);
   };
 
   // Initial Load
@@ -114,49 +146,96 @@ export default function Command() {
     loadInitialData();
   }, []);
 
-  // Render
   return (
     <List
-      searchBarPlaceholder="Search workflows by name or tags..."
+      searchBarPlaceholder="Search workflows by name, tags, or instance..."
       isLoading={isLoading}
       filtering={true}
       searchBarAccessory={
         <List.Dropdown
-          tooltip="Filter by Tag"
-          value={selectedTag || ""}
-          onChange={handleTagChange}
+          tooltip="Filter by Instance"
+          value={selectedInstance || ""}
+          onChange={handleInstanceChange}
         >
-          <List.Dropdown.Item title="All Tags" value="" />
-          {availableTags.map((tag) => (
+          <List.Dropdown.Item title="All Instances" value="" />
+          {uniqueInstances.map((instance) => (
             <List.Dropdown.Item
-              key={tag}
-              title={tag}
-              value={tag}
-              icon={Icon.Tag}
+              key={instance.id}
+              title={instance.name}
+              value={instance.id}
+              icon={{ source: Icon.Dot, tintColor: instance.color as Color }}
             />
           ))}
         </List.Dropdown>
       }
     >
-      {items
-        .filter(item => !selectedTag || item.keywords.includes(selectedTag))
-        .map((item) => (
+      <List.Section title="Tags" subtitle={selectedTag || "All"}>
+        {!selectedTag && (
           <List.Item
-            key={item.id}
-            icon={item.icon}
-            title={item.title}
-            keywords={item.keywords}
-            accessories={[{ icon: Icon.Hashtag, text: item.accessory }]}
+            title="All Tags"
+            icon={Icon.Tag}
             actions={
               <ActionPanel>
-                <Action.OpenInBrowser url={API_ENDPOINTS.workflowUrl(item.id)} />
-                <Action.CopyToClipboard 
-                  title="Copy Workflow URL" 
-                  content={API_ENDPOINTS.workflowUrl(item.id)} 
+                <Action
+                  title="Refresh All Workflows"
+                  icon={Icon.RotateClockwise}
+                  onAction={() => fetchData(true)}
+                  shortcut={{ modifiers: ["cmd"], key: "r" }}
                 />
-                <Action 
-                  title="Refresh Workflows" 
-                  icon={Icon.RotateClockwise} 
+              </ActionPanel>
+            }
+          />
+        )}
+        {availableTags.map((tag) => (
+          <List.Item
+            key={tag}
+            title={tag}
+            icon={Icon.Tag}
+            actions={
+              <ActionPanel>
+                <Action
+                  title={selectedTag === tag ? "Clear Tag Filter" : "Filter by Tag"}
+                  onAction={() => handleTagChange(selectedTag === tag ? null : tag)}
+                />
+              </ActionPanel>
+            }
+          />
+        ))}
+      </List.Section>
+
+      <List.Section title="Workflows" subtitle={items.length.toString()}>
+        {filterItems(items, "", selectedTag, selectedInstance).map((item) => (
+          <List.Item
+            key={`${item.instanceId}-${item.id}`}
+            icon={{ source: Icon.Dot, tintColor: item.instanceColor as Color }}
+            title={item.title}
+            subtitle={item.subtitle}
+            accessories={[
+              { icon: Icon.Hashtag, text: item.accessory },
+              { text: item.instanceName }
+            ]}
+            actions={
+              <ActionPanel>
+                <Action.OpenInBrowser 
+                  url={getApiEndpoints({ 
+                    id: item.instanceId,
+                    name: item.instanceName,
+                    baseUrl: instances.find(i => i.id === item.instanceId)?.baseUrl || "",
+                    apiKey: "" 
+                  }).workflowUrl(item.id)} 
+                />
+                <Action.CopyToClipboard
+                  title="Copy Workflow URL"
+                  content={getApiEndpoints({
+                    id: item.instanceId,
+                    name: item.instanceName,
+                    baseUrl: instances.find(i => i.id === item.instanceId)?.baseUrl || "",
+                    apiKey: ""
+                  }).workflowUrl(item.id)}
+                />
+                <Action
+                  title="Refresh Workflows"
+                  icon={Icon.RotateClockwise}
                   onAction={() => fetchData(true)}
                   shortcut={{ modifiers: ["cmd"], key: "r" }}
                 />
@@ -164,6 +243,7 @@ export default function Command() {
             }
           />
         ))}
+      </List.Section>
     </List>
   );
 }

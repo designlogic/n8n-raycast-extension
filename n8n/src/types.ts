@@ -1,15 +1,25 @@
+export interface N8nInstance {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  color?: string;
+}
+
+export interface Preferences {
+  instances: N8nInstance[];
+}
+
 export interface WorkflowItem {
   id: string;
+  instanceId: string;
+  instanceName: string;
+  instanceColor?: string;
   icon: { source: string };
   title: string;
   subtitle: string;
   accessory: string;
   keywords: string[];
-}
-
-export interface Preferences {
-  apiKey: string;
-  baseUrl: string;
 }
 
 export interface WorkflowResponse {
@@ -28,4 +38,4 @@ export interface Tag {
 
 export interface TagsResponse {
   data: Tag[];
-} 
+}

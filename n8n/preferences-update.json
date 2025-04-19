@@ -1,0 +1,42 @@
+{
+  "preferences": [
+    {
+      "name": "instances",
+      "type": "array",
+      "required": true,
+      "title": "n8n Instances",
+      "description": "Configure your n8n instances",
+      "items": {
+        "type": "object",
+        "required": ["name", "baseUrl", "apiKey"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Instance Name",
+            "description": "A name to identify this n8n instance",
+            "placeholder": "Production"
+          },
+          "baseUrl": {
+            "type": "string",
+            "title": "Base URL",
+            "description": "The n8n instance URL (e.g., https://n8n.example.com)",
+            "placeholder": "https://n8n.example.com"
+          },
+          "apiKey": {
+            "type": "password",
+            "title": "API Key",
+            "description": "The n8n API key for authentication",
+            "placeholder": "Enter your n8n API key"
+          },
+          "color": {
+            "type": "string",
+            "title": "Instance Color",
+            "description": "Color to distinguish this instance (optional)",
+            "placeholder": "#FF0000"
+          }
+        },
+        "additionalProperties": false
+      }
+    }
+  ]
+}
