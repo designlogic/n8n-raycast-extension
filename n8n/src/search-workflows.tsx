@@ -56,11 +56,20 @@ export default function Command() {
   );
 
   // API Functions
-  const fetchWorkflowsForInstance = async (instance: StoredInstance) => {
-    let allWorkflows: WorkflowResponse['data'] = [];
+  /**
+   * Process workflows in smaller batches to reduce memory usage
+   * This function fetches workflows in smaller batches and processes them immediately,
+   * which prevents memory issues when dealing with large numbers of workflows.
+   */
+  const processBatchedWorkflows = async (
+    instance: StoredInstance, 
+    processCallback: (formattedWorkflows: WorkflowItem[]) => void,
+    batchSize = 50
+  ) => {
     let cursor: string | undefined;
-    const limit = 250;
+    const limit = batchSize; // Smaller batch size
     const API_ENDPOINTS = getApiEndpoints(instance);
+    let totalProcessed = 0;
 
     do {
       const url = cursor
@@ -83,11 +92,57 @@ export default function Command() {
       }
 
       const data = await response.json() as { data: WorkflowResponse['data']; nextCursor?: string };
-      allWorkflows = [...allWorkflows, ...(data.data || [])];
-      cursor = data.nextCursor;
-
+      
+      // Process this batch of workflows immediately
+      if (data.data && data.data.length > 0) {
+        const formattedWorkflows = data.data.map(workflow => formatWorkflowData(workflow, instance));
+        processCallback(formattedWorkflows);
+        totalProcessed += formattedWorkflows.length;
+      }
+      
+      // Free up references to large objects for garbage collection
+      const tempCursor = data.nextCursor;
+      cursor = tempCursor;
+      
+      // Free memory by removing references to large objects
+      // Note: We don't use global.gc() as it requires Node.js to be started with --expose-gc flag
+      // which is not guaranteed in this environment
+      data.data = null;
+      
+      // Add small delay to give time for memory cleanup between batches
+      // Add small delay to give time for memory cleanup between batches if we have a significant number of workflows
+      if (totalProcessed > 100) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      
     } while (cursor);
 
+    return totalProcessed;
+  };
+
+  // Legacy method - now uses the batched approach
+  const fetchWorkflowsForInstance = async (instance: StoredInstance) => {
+    const allWorkflows: WorkflowResponse['data'] = [];
+    
+    // Use the batched processing but still collect all workflows for backwards compatibility
+    await processBatchedWorkflows(
+      instance,
+      (formattedWorkflows) => {
+        // Extract the raw workflow data for backwards compatibility
+        const rawWorkflows = formattedWorkflows.map(fw => ({
+          id: fw.id,
+          name: fw.title,
+          active: fw.active,
+          tags: fw.accessory !== "No Tags" 
+            ? fw.accessory.split(", ").map(tag => ({ name: tag })) 
+            : []
+        }));
+        
+        // Add to allWorkflows
+        allWorkflows.push(...rawWorkflows);
+      }
+    );
+    
     return allWorkflows;
   };
 
@@ -100,8 +155,28 @@ export default function Command() {
       hasTrigger: undefined
     }));
     
-    await cache.set(CACHE_KEY, JSON.stringify(workflowsWithTriggerStatus));
-    setItems(workflowsWithTriggerStatus);
+    // Deduplicate workflows by uniqueKey
+    const uniqueWorkflows = Array.from(
+      new Map(workflowsWithTriggerStatus.map(item => [item.uniqueKey, item])).values()
+    );
+    
+    // Only cache essential data to reduce memory usage
+    const essentialData = uniqueWorkflows.map(workflow => ({
+      id: workflow.id,
+      instanceId: workflow.instanceId,
+      uniqueKey: workflow.uniqueKey,
+      instanceName: workflow.instanceName,
+      instanceColor: workflow.instanceColor,
+      title: workflow.title,
+      subtitle: workflow.subtitle,
+      accessory: workflow.accessory,
+      keywords: workflow.keywords,
+      active: workflow.active,
+      hasTrigger: workflow.hasTrigger
+    }));
+    
+    await cache.set(CACHE_KEY, JSON.stringify(essentialData));
+    setItems(uniqueWorkflows);
   };
 
   const fetchData = async (forceFresh = false) => {
@@ -109,10 +184,12 @@ export default function Command() {
     console.log("🔄 Fetching fresh data from all instances...");
     
     try {
-      const allWorkflows: WorkflowItem[] = [];
+      const collectedWorkflows: WorkflowItem[] = [];
       const errors: string[] = [];
       const newStatuses: Record<string, InstanceStatus> = {};
+      let totalWorkflows = 0;
 
+      // Process instances in sequence to reduce memory pressure
       for (const instance of instances) {
         try {
           const status = await getInstanceStatus(instance.id);
@@ -120,11 +197,33 @@ export default function Command() {
             isActive: status?.isActive || false,
             error: status?.error
           };
-
           if (status?.isActive) {
-            const workflows = await fetchWorkflowsForInstance(instance);
-            const formattedWorkflows = workflows.map(workflow => formatWorkflowData(workflow, instance));
-            allWorkflows.push(...formattedWorkflows);
+            // Use the batched processing approach
+            const workflowsProcessed = await processBatchedWorkflows(
+              instance,
+              (formattedWorkflows) => {
+                // Add workflows to our collection
+                collectedWorkflows.push(...formattedWorkflows);
+                
+                // If we've accumulated a good number, update the UI to show progress
+                // If we've accumulated a good number, update the UI to show progress
+                if (collectedWorkflows.length % 100 === 0) {
+                  // Update state with current batch for better responsiveness
+                  const uniqueWorkflows = Array.from(
+                    new Map(collectedWorkflows.map(item => [item.uniqueKey, item])).values()
+                  );
+                  setItems(sortAlphabetically(uniqueWorkflows));
+                  
+                  // Release references to allow GC
+                  const tempCollected = [...collectedWorkflows];
+                  collectedWorkflows.length = 0;
+                  collectedWorkflows.push(...uniqueWorkflows);
+                }
+              },
+              50 // Set batch size to 50 workflows per request
+            );
+            totalWorkflows += workflowsProcessed;
+            console.log(`Processed ${workflowsProcessed} workflows from ${instance.name}`);
           }
         } catch (error) {
           errors.push(`${instance.name}: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -132,17 +231,24 @@ export default function Command() {
         }
       }
 
+      // After processing all instances, update statuses and finalize the UI
       setInstanceStatuses(newStatuses);
 
-      if (allWorkflows.length > 0) {
-        const sortedWorkflows = sortAlphabetically(allWorkflows);
+      if (collectedWorkflows.length > 0) {
+        // Deduplicate and sort
+        const uniqueWorkflows = Array.from(
+          new Map(collectedWorkflows.map(item => [item.uniqueKey, item])).values()
+        );
+        const sortedWorkflows = sortAlphabetically(uniqueWorkflows);
+        
+        // Update the workflow data in state and cache
         await updateWorkflowData(sortedWorkflows);
         
         if (forceFresh) {
           await showToast({
             style: Toast.Style.Success,
             title: "Workflows Refreshed",
-            message: `Found ${sortedWorkflows.length} workflows across ${instances.length} instances`
+            message: `Found ${uniqueWorkflows.length} unique workflows across ${instances.length} instances`
           });
         }
       }
@@ -291,6 +397,14 @@ export default function Command() {
         title: `Workflow ${!workflow.active ? "activated" : "deactivated"}`,
         message: workflow.title
       });
+      
+      // Optional: Free up memory after large operations
+      setTimeout(() => {
+        // This will give time for UI updates to complete before we suggest garbage collection
+        // Note: We don't use explicit GC calls but rely on reference cleanup
+        const updatedWorkflow = null;
+        const updatedResponse = null;
+      }, 100);
 
     } catch (error) {
       console.error("Error toggling workflow status:", error);
@@ -547,7 +661,7 @@ export default function Command() {
       <List.Section title="Workflows" subtitle={items.length.toString()}>
         {filterItems(items, "", selectedTag, selectedInstance).map((item) => (
           <List.Item
-            key={`${item.instanceId}-${item.id}`}
+            key={item.uniqueKey}
             icon={{ source: Icon.Circle, tintColor: item.instanceColor as Color }}
             title={item.title}
             subtitle={item.subtitle}

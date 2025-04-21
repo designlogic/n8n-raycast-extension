@@ -4,6 +4,11 @@ export const sortAlphabetically = (items: WorkflowItem[]): WorkflowItem[] => {
   return [...items].sort((a, b) => a.title.toLowerCase().localeCompare(b.title.toLowerCase()));
 };
 
+/**
+ * Formats workflow data from API response into a WorkflowItem
+ * Creates a uniqueKey using instance.id-workflow.id to ensure workflows are uniquely identified
+ * across multiple n8n instances
+ */
 export const formatWorkflowData = (
   workflow: WorkflowResponse["data"][0], 
   instance: N8nInstance
@@ -12,6 +17,7 @@ export const formatWorkflowData = (
   return {
     id: workflow.id,
     instanceId: instance.id,
+    uniqueKey: `${instance.id}-${workflow.id}`, // Add a composite unique key
     instanceName: instance.name,
     instanceColor: instance.color,
     icon: { source: "list-icon.svg" },
@@ -37,7 +43,12 @@ export const filterItems = (
   }
   
   const lowerSearchText = searchText.trim().toLowerCase();
-  const filtered = items.filter((item) => {
+  
+  // Create a Map to store unique workflows based on their uniqueKey
+  const uniqueWorkflows = new Map();
+  
+  // First pass: filter and deduplicate by uniqueKey
+  items.forEach((item) => {
     const matchesSearch = !searchText || 
       item.title.toLowerCase().includes(lowerSearchText) ||
       item.keywords.some(keyword => keyword.toLowerCase().includes(lowerSearchText));
@@ -48,8 +59,14 @@ export const filterItems = (
     const matchesInstance = !selectedInstance ||
       item.instanceId === selectedInstance;
 
-    return matchesSearch && matchesTag && matchesInstance;
+    if (matchesSearch && matchesTag && matchesInstance) {
+      // Use uniqueKey as map key to ensure no duplicates
+      uniqueWorkflows.set(item.uniqueKey, item);
+    }
   });
+  
+  // Convert Map values back to array
+  const filtered = Array.from(uniqueWorkflows.values());
 
   return sortAlphabetically(filtered);
 };

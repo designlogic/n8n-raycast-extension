@@ -1,6 +1,7 @@
 export interface WorkflowItem {
   id: string;
   instanceId: string;
+  uniqueKey: string;
   instanceName: string;
   instanceColor?: string;
   icon: { source: string };
