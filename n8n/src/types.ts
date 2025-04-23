@@ -1,15 +1,31 @@
 export interface WorkflowItem {
   id: string;
+  instanceId: string;
+  uniqueKey: string;
+  instanceName: string;
+  instanceColor?: string;
   icon: { source: string };
   title: string;
   subtitle: string;
   accessory: string;
   keywords: string[];
+  active: boolean;
+  hasTrigger?: boolean;
+}
+
+export interface N8nInstance {
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  color?: string;
+}
+
+export interface StoredInstance extends N8nInstance {
+  id: string;
 }
 
 export interface Preferences {
-  apiKey: string;
-  baseUrl: string;
+  instances: N8nInstance[];
 }
 
 export interface WorkflowResponse {
@@ -28,4 +44,4 @@ export interface Tag {
 
 export interface TagsResponse {
   data: Tag[];
-} 
+}
