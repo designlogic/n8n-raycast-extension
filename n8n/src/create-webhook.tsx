@@ -1,8 +1,12 @@
-import { showToast, Toast, Clipboard, Form, ActionPanel, Action } from "@raycast/api";
+import { showToast, Toast, Clipboard, Form, ActionPanel, Action, Icon } from "@raycast/api";
 import { v4 as uuidv4 } from 'uuid';
 import { useState, useEffect } from "react";
 import parseCurl from 'parse-curl';
 import { sentenceCase } from "change-case";
+import { InstanceSelector } from "./components/InstanceSelector";
+import { StoredInstance } from "./types";
+import { getApiEndpoints } from "./config";
+import fetch from "node-fetch";
 
 interface WebhookNode {
   parameters: {
@@ -22,7 +26,36 @@ interface WebhookJson {
   nodes: WebhookNode[];
   connections: Record<string, unknown>;
   pinData?: Record<string, unknown>;
-  meta?: Record<string, unknown>;
+  meta?: {
+    instanceId: string;
+    instanceName: string;
+  };
+}
+
+const EXAMPLE_CURL = `curl --location 'https://api.example.com/webhook' \\
+--header 'Content-Type: application/json' \\
+--data '{
+    "event": "user.created",
+    "data": {
+        "id": 123,
+        "name": "John Doe"
+    }
+}'`;
+
+async function toggleWorkflowStatus(instance: StoredInstance, workflowId: string, active: boolean): Promise<void> {
+  const apiEndpoints = getApiEndpoints(instance);
+  const response = await fetch(`${apiEndpoints.workflows}/${workflowId}`, {
+    method: 'PATCH',
+    headers: {
+      'X-N8N-API-KEY': instance.apiKey,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ active })
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to ${active ? 'activate' : 'deactivate'} workflow: ${response.statusText}`);
+  }
 }
 
 function parseCurlCommand(curlCommand: string): { url: string; method: string; headers: Record<string, string>; body?: string } {
@@ -39,13 +72,18 @@ function getWebhookNameFromPath(path: string): string {
   // Remove leading/trailing slashes and get the last segment
   const cleanPath = path.replace(/^\/+|\/+$/g, '');
   const segments = cleanPath.split('/');
-  const lastSegment = segments[segments.length - 1];
+  const lastSegment = segments[segments.length - 1] || 'webhook';
   
   // Convert kebab-case or snake_case to Title Case
   return sentenceCase(lastSegment.replace(/[-_]/g, ' '));
 }
 
-function generateWebhookJson(curlData: { url: string; method: string; headers: Record<string, string>; body?: string }, originalCurl: string): WebhookJson {
+function generateWebhookJson(
+  curlData: { url: string; method: string; headers: Record<string, string>; body?: string }, 
+  originalCurl: string,
+  instance: StoredInstance,
+  active: boolean = false
+): WebhookJson {
   const urlObj = new URL(curlData.url);
   // Extract path after webhook-test
   const pathMatch = urlObj.pathname.match(/\/webhook-test(.*)/);
@@ -70,7 +108,7 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
     notes: `Original curl command:\n${originalCurl}`
   };
 
-  return {
+  const json: WebhookJson = {
     nodes: [webhookNode],
     connections: {},
     pinData: {
@@ -81,12 +119,20 @@ function generateWebhookJson(curlData: { url: string; method: string; headers: R
           executionMode: "test"
         }
       ]
+    },
+    meta: {
+      instanceId: instance.id,
+      instanceName: instance.name
     }
   };
+
+  return json;
 }
 
 export default function Command() {
   const [curlCommand, setCurlCommand] = useState("");
+  const [selectedInstance, setSelectedInstance] = useState<StoredInstance>();
+  const [activateOnCreate, setActivateOnCreate] = useState(false);
 
   useEffect(() => {
     const initClipboard = async () => {
@@ -107,16 +153,26 @@ export default function Command() {
   }, []);
 
   const handleSubmit = async () => {
+    if (!selectedInstance) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "No Instance Selected",
+        message: "Please select an n8n instance"
+      });
+      return;
+    }
+
     try {
-      const trimmedCommand = curlCommand.trim();
+      const trimmedCommand = curlCommand.trim() || EXAMPLE_CURL;
       const parsedCurl = parseCurlCommand(trimmedCommand);
-      const webhookJson = generateWebhookJson(parsedCurl, trimmedCommand);
+      const webhookJson = generateWebhookJson(parsedCurl, trimmedCommand, selectedInstance, activateOnCreate);
       
       await Clipboard.copy(JSON.stringify(webhookJson, null, 2));
       
       await showToast({
         style: Toast.Style.Success,
         title: "Webhook JSON copied to clipboard",
+        message: `For instance: ${selectedInstance.name}${activateOnCreate ? ' (will activate on create)' : ''}`
       });
     } catch (error) {
       await showToast({
@@ -127,14 +183,44 @@ export default function Command() {
     }
   };
 
+  const handlePasteExample = () => {
+    setCurlCommand(EXAMPLE_CURL);
+  };
+
   return (
     <Form
       actions={
         <ActionPanel>
           <Action.SubmitForm title="Convert and Copy" onSubmit={handleSubmit} />
+          <Action 
+            title="Paste Example" 
+            icon={Icon.Document}
+            onAction={handlePasteExample}
+          />
         </ActionPanel>
       }
     >
+      <Form.Description
+        title="Create Webhook Node"
+        text={`Convert a curl command into an n8n webhook node configuration. 
+        
+Paste a curl command (like one exported from Postman) and it will be converted into a webhook node configuration that you can paste into n8n.
+
+The curl command should include:
+- URL (required)
+- Method (GET, POST, etc.)
+- Headers (optional)
+- Request body (optional)
+
+Example curl command structure:
+${EXAMPLE_CURL}`}
+      />
+      
+      <InstanceSelector
+        onInstanceSelect={setSelectedInstance}
+        selectedInstanceId={selectedInstance?.id}
+      />
+      
       <Form.TextArea
         id="curl"
         title="Curl Command"
@@ -142,6 +228,13 @@ export default function Command() {
         value={curlCommand}
         onChange={setCurlCommand}
       />
+
+      <Form.Checkbox
+        id="activate"
+        label="Activate Workflow"
+        value={activateOnCreate}
+        onChange={setActivateOnCreate}
+      />
     </Form>
   );
-} 
+}
