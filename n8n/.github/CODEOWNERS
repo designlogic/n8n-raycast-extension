@@ -1,26 +1,26 @@
 # Primary maintainer for ongoing development
-* @danielwillitzer
+* @dwillitzer
 
 # Shared ownership of foundational files
-LICENSE @designlogic @danielwillitzer
-README.md @designlogic @danielwillitzer
+LICENSE @designlogic @dwillitzer
+README.md @designlogic @dwillitzer
 
 # Core functionality and components
-src/*.ts @danielwillitzer
-src/*.tsx @danielwillitzer
-src/components/* @danielwillitzer
+src/*.ts @dwillitzer
+src/*.tsx @dwillitzer
+src/components/* @dwillitzer
 
 # Utils, configuration and tests
-src/utils/* @danielwillitzer
-src/config.ts @danielwillitzer
-src/__tests__/* @danielwillitzer
+src/utils/* @dwillitzer
+src/config.ts @dwillitzer
+src/__tests__/* @dwillitzer
 
 # Package and dependency files
-package*.json @danielwillitzer
-renovate.json @danielwillitzer
+package*.json @dwillitzer
+renovate.json @dwillitzer
 
 # GitHub configuration
-.github/* @danielwillitzer @designlogic
+.github/* @dwillitzer @designlogic
 
 # This project builds on the original foundation created by @designlogic
-# with significant enhancements and refactoring by @danielwillitzer
+# with significant enhancements and refactoring by @dwillitzer

@@ -63,7 +63,7 @@ npm run dev
 ## Contributors
 
 This extension is maintained by:
-- Daniel Willitzer ([@danielwillitzer](https://github.com/danielwillitzer))
+- Daniel Willitzer ([@dwillitzer](https://github.com/dwillitzer))
 - Tyler Thompson ([@designlogic](https://github.com/designlogic))
 
 ## License
