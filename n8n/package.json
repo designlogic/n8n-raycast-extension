@@ -122,6 +122,7 @@
     "@raycast/api": "^1.96.0",
     "@raycast/utils": "^1.19.1",
     "change-case": "^5.4.4",
+    "fuse.js": "^7.1.0",
     "node-fetch": "^3.3.2",
     "parse-curl": "^0.2.6",
     "uuid": "^9.0.1"
