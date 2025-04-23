@@ -12,6 +12,12 @@ on:
       - '.github/workflows/renovate.yml'
       - 'renovate.json'
 
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  packages: read
+
 jobs:
   renovate:
     runs-on: ubuntu-latest  # This uses GitHub-hosted runners (GitHub's infrastructure)
