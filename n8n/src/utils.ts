@@ -1,37 +1,70 @@
-import { WorkflowItem, WorkflowResponse, N8nInstance } from "./types";
+import { WorkflowItem, Preferences, WorkflowResponse, N8nInstance } from "./types";
+import Fuse from 'fuse.js';
 
-export const sortAlphabetically = (items: WorkflowItem[]): WorkflowItem[] => {
-  return [...items].sort((a, b) => a.title.toLowerCase().localeCompare(b.title.toLowerCase()));
+/**
+ * Performs fuzzy search on workflow items using Fuse.js
+ * @param items Items to search through
+ * @param searchText Text to search for
+ * @returns Array of matching items with scores
+ */
+export const performFuzzySearch = (
+  items: WorkflowItem[],
+  searchText: string
+): WorkflowItem[] => {
+  try {
+    // Early return if search text is empty
+    if (!searchText.trim()) {
+      return items;
+    }
+
+    // Calculate threshold based on search text length
+    // Shorter queries should be more strict to avoid too many false positives
+    const threshold = Math.min(
+      0.6, // Maximum threshold
+      0.3 + (searchText.length * 0.05) // Increases with length, starts stricter
+    );
+
+    // Create a new Fuse instance each time (avoid caching issues)
+    const fuse = new Fuse(items, {
+      keys: [
+        { name: 'title', weight: 2 },      // Prioritize workflow name matches
+        { name: 'instanceName', weight: 1 }, // Increase instance name weight
+        { name: 'keywords', weight: 0.8 },  // Increase tag weight
+        { name: 'subtitle', weight: 0.5 }   // Add subtitle for more context
+      ],
+      includeScore: true,
+      threshold,              // Dynamic threshold
+      distance: 100,         // Allow matches further apart
+      ignoreLocation: true,  // Ignore where in the string the pattern appears
+      useExtendedSearch: true, // Enable extended search
+      minMatchCharLength: Math.min(2, searchText.length) // Adjust for very short queries
+    });
+
+    // Perform search
+    const results = fuse.search(searchText);
+    
+    // Adjust relevance filter based on search length
+    const maxScore = searchText.length <= 2 ? 0.4 : 0.8;
+    const relevantResults = results.filter(result => !result.score || result.score < maxScore);
+    
+    // Return just the items, not the Fuse result objects
+    return relevantResults.map(result => result.item);
+  } catch (error) {
+    console.error(`Error in fuzzy search: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    
+    // Fallback to basic filtering if fuzzy search fails
+    const searchTermLower = searchText.toLowerCase().trim();
+    return items.filter(item => 
+      item.title.toLowerCase().includes(searchTermLower) || 
+      item.keywords.some(keyword => keyword.toLowerCase().includes(searchTermLower))
+    );
+  }
 };
 
 /**
- * Formats workflow data from API response into a WorkflowItem
- * Creates a uniqueKey using instance.id-workflow.id to ensure workflows are uniquely identified
- * across multiple n8n instances
+ * Filter items based on search text, tags, and instance
+ * Uses fuzzy search with fallback to basic partial matching
  */
-export const formatWorkflowData = (
-  workflow: WorkflowResponse["data"][0], 
-  instance: N8nInstance
-): WorkflowItem => {
-  const validTags = workflow.tags?.map(tag => tag.name.trim()).filter(Boolean) || [];
-  return {
-    id: workflow.id,
-    instanceId: instance.id,
-    uniqueKey: `${instance.id}-${workflow.id}`, // Add a composite unique key
-    instanceName: instance.name,
-    instanceColor: instance.color,
-    icon: { source: "list-icon.svg" },
-    title: workflow.name,
-    subtitle: `${instance.name} ${workflow.active ? "• Active" : "• Inactive"}`,
-    accessory: validTags.length > 0 ? validTags.join(", ") : "No Tags",
-    keywords: [
-      instance.name,
-      ...validTags
-    ],
-    active: workflow.active,
-  };
-};
-
 export const filterItems = (
   items: WorkflowItem[], 
   searchText: string,
@@ -42,27 +75,38 @@ export const filterItems = (
     return sortAlphabetically(items);
   }
   
-  const lowerSearchText = searchText.trim().toLowerCase();
+  // Apply instance and tag filtering first
+  let filteredItems = items;
   
-  // Create a Map to store unique workflows based on their uniqueKey
-  const uniqueWorkflows = new Map();
+  // Filter by instance if selected
+  if (selectedInstance) {
+    filteredItems = filteredItems.filter(item => item.instanceId === selectedInstance);
+  }
   
-  // First pass: filter and deduplicate by uniqueKey
-  items.forEach((item) => {
-    const matchesSearch = !searchText || 
-      item.title.toLowerCase().includes(lowerSearchText) ||
-      item.keywords.some(keyword => keyword.toLowerCase().includes(lowerSearchText));
-      
-    const matchesTag = !selectedTag || 
-      item.keywords.includes(selectedTag);
-
-    const matchesInstance = !selectedInstance ||
-      item.instanceId === selectedInstance;
-
-    if (matchesSearch && matchesTag && matchesInstance) {
-      // Use uniqueKey as map key to ensure no duplicates
-      uniqueWorkflows.set(item.uniqueKey, item);
+  // Filter by tag if selected
+  if (selectedTag) {
+    filteredItems = filteredItems.filter(item => item.keywords.includes(selectedTag));
+  }
+  // Apply fuzzy search if there's search text
+  if (searchText.trim()) {
+    try {
+      // Perform fuzzy search (now with built-in fallback)
+      filteredItems = performFuzzySearch(filteredItems, searchText.trim());
+    } catch (error) {
+      console.error("Unexpected error in fuzzy search:", error);
+      // This fallback should rarely be needed since performFuzzySearch has its own error handling
+      const lowerSearchText = searchText.trim().toLowerCase();
+      filteredItems = filteredItems.filter(item => 
+        item.title.toLowerCase().includes(lowerSearchText) || 
+        item.keywords.some(keyword => keyword.toLowerCase().includes(lowerSearchText))
+      );
     }
+  }
+  
+  // Create a Map to store unique workflows based on their uniqueKey (deduplicate)
+  const uniqueWorkflows = new Map();
+  filteredItems.forEach(item => {
+    uniqueWorkflows.set(item.uniqueKey, item);
   });
   
   // Convert Map values back to array
@@ -71,6 +115,16 @@ export const filterItems = (
   return sortAlphabetically(filtered);
 };
 
+/**
+ * Sorts workflow items alphabetically by title
+ */
+export const sortAlphabetically = (items: WorkflowItem[]): WorkflowItem[] => {
+  return [...items].sort((a, b) => a.title.localeCompare(b.title));
+};
+
+/**
+ * Generate a consistent ID for an n8n instance based on its base URL
+ */
 export const generateInstanceId = (baseUrl: string): string => {
   const trimmedUrl = baseUrl.trim();
   if (!trimmedUrl) return "";
@@ -82,6 +136,30 @@ export const generateInstanceId = (baseUrl: string): string => {
     .replace(/(^_+|_+$)/g, ''); // Remove leading/trailing underscores
 };
 
+/**
+ * Gets a unique cache key for a specific n8n instance
+ */
 export const getCacheKeyForInstance = (instanceId: string): string => {
   return `designLogicSolutions.n8n.workflows.${instanceId}.v1`;
+};
+
+/**
+ * Formats raw workflow data from the API into a standardized WorkflowItem structure
+ */
+export const formatWorkflowData = (workflow: WorkflowResponse["data"][0], instance: N8nInstance & { id: string }): WorkflowItem => {
+  const tags = workflow.tags ? workflow.tags.map(tag => tag.name) : [];
+  const accessory = tags.length ? tags.join(", ") : "No Tags";
+  
+  return {
+    id: workflow.id,
+    title: workflow.name,
+    subtitle: `${instance.name} ${workflow.active ? "• Active" : "• Inactive"}`,
+    accessory,
+    keywords: tags,
+    active: workflow.active,
+    instanceId: instance.id,
+    instanceName: instance.name,
+    instanceColor: instance.color || "#0077b6",
+    uniqueKey: `${instance.id}:${workflow.id}`
+  };
 };

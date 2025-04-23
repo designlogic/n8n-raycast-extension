@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import fetch from "node-fetch";
 import { WorkflowItem, Preferences, WorkflowResponse, N8nInstance } from "./types";
 import { CACHE_KEY, getApiEndpoints } from "./config";
-import { sortAlphabetically, formatWorkflowData, filterItems, generateInstanceId } from "./utils";
+import { sortAlphabetically, formatWorkflowData, filterItems, generateInstanceId, performFuzzySearch } from "./utils";
 import { LocalStorage } from "@raycast/api";
 import { getInstanceStatus, getStatusIcon, updateAllInstanceStatuses, startStatusAutoRefresh } from "./utils/instanceStatus";
 
@@ -30,96 +30,375 @@ export default function Command() {
   // State
   const [items, setItems] = useState<WorkflowItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [searchText, setSearchText] = useState<string>("");
+  const [isApiSearching, setIsApiSearching] = useState(false);
+  const [isFuzzySearching, setIsFuzzySearching] = useState(false);
+  const [apiSearchResults, setApiSearchResults] = useState<WorkflowItem[]>([]);
+  const [fuzzySearchResults, setFuzzySearchResults] = useState<WorkflowItem[]>([]);
+  const [instanceStatuses, setInstanceStatuses] = useState<Record<string, InstanceStatus>>({});
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
   const [instances, setInstances] = useState<StoredInstance[]>([]);
-  const [instanceStatuses, setInstanceStatuses] = useState<Record<string, InstanceStatus>>({});
 
   const cache = new Cache();
 
-  // Get unique tags from workflow items
-  const availableTags = [...new Set(items.flatMap(item => item.keywords))].sort();
-  
-  // Get unique instances ensuring no duplicates
-  const uniqueInstances = Array.from(
-    new Map(
-      items.map(item => [
-        item.instanceId,
-        {
-          id: item.instanceId,
-          name: item.instanceName,
-          color: item.instanceColor,
-          status: instanceStatuses[item.instanceId]
-        }
-      ])
-    ).values()
-  );
-
-  // API Functions
-  /**
-   * Process workflows in smaller batches to reduce memory usage
-   * This function fetches workflows in smaller batches and processes them immediately,
-   * which prevents memory issues when dealing with large numbers of workflows.
-   */
-  const processBatchedWorkflows = async (
-    instance: StoredInstance, 
-    processCallback: (formattedWorkflows: WorkflowItem[]) => void,
-    batchSize = 50
-  ) => {
-    let cursor: string | undefined;
-    const limit = batchSize; // Smaller batch size
-    const API_ENDPOINTS = getApiEndpoints(instance);
-    let totalProcessed = 0;
-
-    do {
-      const url = cursor
-        ? `${API_ENDPOINTS.workflows}?limit=${limit}&cursor=${cursor}`
-        : `${API_ENDPOINTS.workflows}?limit=${limit}`;
-      
-      const response = await fetch(url, {
-        headers: {
-          "X-N8N-API-KEY": instance.apiKey,
-          "Accept": "application/json"
-        }
-      });
-
-      if (!response.ok) {
-        throw new Error(
-          response.status === 401 
-            ? `Invalid API key for instance ${instance.name}` 
-            : `Failed to fetch workflows from ${instance.name}: ${response.statusText}`
-        );
-      }
-
-      const data = await response.json() as { data: WorkflowResponse['data']; nextCursor?: string };
-      
-      // Process this batch of workflows immediately
-      if (data.data && data.data.length > 0) {
-        const formattedWorkflows = data.data.map(workflow => formatWorkflowData(workflow, instance));
-        processCallback(formattedWorkflows);
-        totalProcessed += formattedWorkflows.length;
-      }
-      
-      // Free up references to large objects for garbage collection
-      const tempCursor = data.nextCursor;
-      cursor = tempCursor;
-      
-      // Free memory by removing references to large objects
-      // Note: We don't use global.gc() as it requires Node.js to be started with --expose-gc flag
-      // which is not guaranteed in this environment
-      data.data = null;
-      
-      // Add small delay to give time for memory cleanup between batches
-      // Add small delay to give time for memory cleanup between batches if we have a significant number of workflows
-      if (totalProcessed > 100) {
-        await new Promise(resolve => setTimeout(resolve, 10));
-      }
-      
-    } while (cursor);
-
-    return totalProcessed;
+  // Helper function for section subtitle
+  const getWorkflowSectionSubtitle = () => {
+    if (isApiSearching) return "API Searching...";
+    if (isFuzzySearching) return "Fuzzy Searching...";
+    if (apiSearchResults.length > 0) return `API Results: ${apiSearchResults.length}`;
+    if (fuzzySearchResults.length > 0) return `Fuzzy Results: ${fuzzySearchResults.length}`;
+    return items.length.toString();
   };
 
+  // Render workflow item function
+  const renderWorkflowItem = (item: WorkflowItem) => (
+    <List.Item
+      key={item.uniqueKey}
+      icon={{ source: Icon.Circle, tintColor: item.instanceColor as Color }}
+      title={item.title}
+      subtitle={item.subtitle}
+      accessories={[
+        { icon: Icon.Hashtag, text: item.accessory }
+      ]}
+      actions={
+        <ActionPanel>
+          <Action.OpenInBrowser
+            title="Open in Browser"
+            url={getApiEndpoints({
+              id: item.instanceId,
+              name: item.instanceName,
+              baseUrl: instances.find(i => i.id === item.instanceId)?.baseUrl || "",
+              apiKey: ""
+            }).workflowUrl(item.id)}
+          />
+          <Action
+            title={item.active ? "Deactivate Workflow" : "Activate Workflow"}
+            icon={item.active ? Icon.MinusCircle : Icon.Circle}
+            onAction={() => toggleWorkflowStatus(item)}
+            shortcut={{ modifiers: ["cmd"], key: "t" }}
+          />
+          <Action
+            title="Refresh Workflows"
+            icon={Icon.RotateClockwise}
+            onAction={() => fetchData(true)}
+            shortcut={{ modifiers: ["cmd"], key: "r" }}
+          />
+        </ActionPanel>
+      }
+    />
+  );
+  // Search workflows via API across all instances
+  const searchWorkflowsViaAPI = async (searchTerm: string): Promise<WorkflowItem[]> => {
+    if (!searchTerm || searchTerm.trim().length === 0) return [];
+    
+    setIsApiSearching(true);
+    const searchResults: WorkflowItem[] = [];
+    const errors: string[] = [];
+    
+    try {
+      const searchTermLower = searchTerm.trim().toLowerCase();
+      
+      // Process instances in sequence
+      for (const instance of instances) {
+        try {
+          // Skip instances that are offline
+          const status = instanceStatuses[instance.id];
+          if (!status?.isActive) {
+            console.log(`Skipping instance ${instance.name} because it's offline`);
+            continue;
+          }
+          
+          // Try two search strategies:
+          // 1. First attempt direct API search (faster but less flexible)
+          // 2. If no results or error, fallback to fetching all workflows (more thorough)
+          
+          try {
+            const API_ENDPOINTS = getApiEndpoints(instance);
+            console.log(`Trying direct API search for ${instance.name}...`);
+            
+            // Use appropriate parameters based on search term format
+            const searchUrl = `${API_ENDPOINTS.workflows}`;
+            const params = new URLSearchParams();
+            if (searchTerm.includes(' ')) {
+              // For multi-word searches, use tags parameter
+              params.append('tags', searchTerm);
+            } else {
+              // For single-word searches, search in name
+              params.append('name', searchTerm);
+            }
+            const fullUrl = `${searchUrl}?${params.toString()}`;
+            
+            const response = await fetch(fullUrl, {
+              method: 'GET',
+              headers: (() => {
+                const headers: Record<string, string> = {
+                  "Accept": "application/json"
+                };
+                
+                // Try both authentication methods (n8n supports both depending on version)
+                if (instance.apiKey.startsWith('Bearer ') || instance.apiKey.startsWith('token ')) {
+                  headers["Authorization"] = instance.apiKey;
+                } else {
+                  headers["X-N8N-API-KEY"] = instance.apiKey;
+                }
+                
+                return headers;
+              })()
+            });
+            
+            if (!response.ok) {
+              throw new Error(
+                response.status === 401 
+                  ? `Invalid API key for instance ${instance.name}` 
+                  : `Failed to search workflows from ${instance.name}: ${response.statusText}`
+              );
+            }
+            
+            const data = await response.json() as { data: WorkflowResponse['data'] };
+            
+            if (data.data && data.data.length > 0) {
+              const formattedResults = data.data.map(workflow => formatWorkflowData(workflow, instance));
+              searchResults.push(...formattedResults);
+              console.log(`Found ${formattedResults.length} workflows via direct API search in ${instance.name}`);
+              // If we found results with direct API search, we can skip the batch processing
+              continue;
+            } else {
+              console.log(`No results from direct API search in ${instance.name}, trying batch processing...`);
+            }
+          } catch (apiError) {
+            console.log(`API search error for ${instance.name}, falling back to batch processing:`, apiError);
+            // Continue to batch processing fallback
+          }
+          
+          // Fallback: Fetch all workflows and filter client-side
+          // This enables partial matching and finding recently created workflows
+          console.log(`Fetching all workflows from ${instance.name} for partial matching...`);
+          
+          // Collect matching workflows while processing batches
+          await processBatchedWorkflows(
+            instance,
+            (formattedWorkflows) => {
+              // Apply client-side partial matching
+              const matchingWorkflows = formattedWorkflows.filter(workflow => {
+                const titleLower = workflow.title.toLowerCase();
+                const tagsLower = workflow.keywords.map(k => k.toLowerCase());
+                
+                // Check for direct inclusion of the whole search term
+                if (titleLower.includes(searchTermLower) || 
+                    tagsLower.some(tag => tag.includes(searchTermLower))) {
+                  return true;
+                }
+                
+                // Handle numeric searches specifically (e.g. "52" should match "Workflow 52")
+                const numericMatch = searchTermLower.match(/\d+/);
+                if (numericMatch) {
+                  const numericPart = numericMatch[0];
+                  if (titleLower.includes(numericPart)) {
+                    return true;
+                  }
+                }
+                
+                // Split search term into parts and check if ANY parts match (not all)
+                // This makes the search more lenient
+                const searchParts = searchTermLower.split(/\s+/);
+                return searchParts.some(part => 
+                  titleLower.includes(part) || 
+                  tagsLower.some(tag => tag.includes(part))
+                );
+              });
+              
+              if (matchingWorkflows.length > 0) {
+                searchResults.push(...matchingWorkflows);
+              }
+            },
+            50 // batch size
+          );
+        } catch (error) {
+          errors.push(`${instance.name}: ${error instanceof Error ? error.message : "Unknown error"}`);
+        }
+      }
+      
+      if (errors.length > 0) {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "Some instances failed to search",
+          message: errors.join("\n")
+        });
+      }
+      
+      if (searchResults.length > 0) {
+        // Deduplicate and sort results
+        const uniqueResults = Array.from(
+          new Map(searchResults.map(item => [item.uniqueKey, item])).values()
+        );
+        const sortedResults = sortAlphabetically(uniqueResults);
+        
+        // Merge with existing cached workflows to improve future fuzzy searches
+        try {
+          // Get the current cached items
+          const cachedData = await cache.get(CACHE_KEY);
+          if (cachedData) {
+            const cachedItems = JSON.parse(cachedData) as WorkflowItem[];
+            
+            // Create a map of existing items for quick lookup
+            const existingItemsMap = new Map(
+              cachedItems.map(item => [item.uniqueKey, item])
+            );
+            
+            // Add new items from API search to the map
+            sortedResults.forEach(newItem => {
+              existingItemsMap.set(newItem.uniqueKey, newItem);
+            });
+            
+            // Convert back to array and sort
+            const combinedItems = sortAlphabetically(
+              Array.from(existingItemsMap.values())
+            );
+            
+            // Update the cache with the combined data
+            await updateWorkflowData(combinedItems);
+            
+            // Also update the items state with the combined dataset
+            setItems(combinedItems);
+            
+            console.log(`Combined ${sortedResults.length} new workflows with ${cachedItems.length} cached workflows, resulting in ${combinedItems.length} unique workflows`);
+          } else {
+            // If no cache exists, just use the new results
+            await updateWorkflowData(sortedResults);
+          }
+        } catch (cacheError) {
+          console.error("Error updating cache with new workflows:", cacheError);
+          // Even if cache update fails, still return the API results
+        }
+        
+        // Update the state with the search results
+        setApiSearchResults(sortedResults);
+        
+        // Add a note about fuzzy matching in the success message
+        await showToast({
+          style: Toast.Style.Success,
+          message: `Found ${uniqueResults.length} workflows containing "${searchTerm}"`
+        });
+        
+        return sortedResults;
+      } else {
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "No Results Found",
+          message: `No workflows containing "${searchTerm}" found across instances`
+        });
+        return [];
+      }
+    } catch (error) {
+      console.error("Error searching workflows via API:", error);
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Search Failed",
+        message: error instanceof Error ? error.message : "Unknown error"
+      });
+      return [];
+    } finally {
+      setIsApiSearching(false);
+    }
+  };
+  
+  /**
+   * Process workflows in batches to reduce memory usage and improve performance
+   * @param instance The n8n instance to fetch workflows from
+   * @param onBatchProcessed Callback function to handle each batch of processed workflows
+   * @param batchSize Number of workflows to process in each batch
+   * @returns Total number of workflows processed
+   */
+  const processBatchedWorkflows = async (
+    instance: StoredInstance,
+    onBatchProcessed: (workflows: WorkflowItem[]) => void,
+    batchSize = 50
+  ): Promise<number> => {
+    let totalWorkflows = 0;
+    let offset = 0;
+    const API_ENDPOINTS = getApiEndpoints(instance);
+    while (true) {
+      try {
+        // Construct URL with proper pagination parameters
+        const params = new URLSearchParams({
+          'active': 'all',
+          'limit': batchSize.toString(),
+          'offset': offset.toString()
+        });
+        
+        const response = await fetch(`${API_ENDPOINTS.workflows}`, {
+          method: 'GET',
+          headers: (() => {
+            const headers: Record<string, string> = {
+              "Accept": "application/json"
+            };
+            
+            // Try both authentication methods
+            if (instance.apiKey.startsWith('Bearer ') || instance.apiKey.startsWith('token ')) {
+              headers["Authorization"] = instance.apiKey;
+            } else {
+              headers["X-N8N-API-KEY"] = instance.apiKey;
+            }
+            
+            return headers;
+          })()
+        });
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          let errorMessage;
+          try {
+            const errorJson = JSON.parse(errorText);
+            errorMessage = errorJson.message || errorJson.error || response.statusText;
+          } catch {
+            errorMessage = errorText || response.statusText;
+          }
+          
+          throw new Error(
+            response.status === 401 
+              ? `Invalid API key for instance ${instance.name}` 
+              : `Failed to fetch workflows from ${instance.name}: ${errorMessage}`
+          );
+        }
+        
+        const data = await response.json() as WorkflowResponse;
+        const workflows = data.data || [];
+        
+        if (workflows.length === 0) {
+          break; // No more workflows to process
+        }
+        
+        // Format the workflows
+        const formattedWorkflows = workflows.map(workflow => 
+          formatWorkflowData(workflow, instance)
+        );
+        
+        // Process this batch
+        onBatchProcessed(formattedWorkflows);
+        
+        totalWorkflows += workflows.length;
+        
+        // Check if we've processed all workflows
+        if (workflows.length < batchSize) {
+          break;
+        }
+        
+        // Move to next batch
+        offset += batchSize;
+        
+        // Add a small delay to prevent overwhelming the API
+        await new Promise(resolve => setTimeout(resolve, 100));
+      } catch (error) {
+        console.error(`Error processing batch for ${instance.name}:`, error);
+        throw error;
+      }
+    }
+    
+    return totalWorkflows;
+  };
+
+  // Legacy method - now uses the batched approach
   // Legacy method - now uses the batched approach
   const fetchWorkflowsForInstance = async (instance: StoredInstance) => {
     const allWorkflows: WorkflowResponse['data'] = [];
@@ -321,10 +600,20 @@ export default function Command() {
         // First, fetch the workflow to check if it can be activated
         const workflowDetailsResponse = await fetch(`${API_ENDPOINTS.workflows}/${workflow.id}`, {
           method: 'GET',
-          headers: {
-            "X-N8N-API-KEY": instance.apiKey,
-            "Accept": "application/json"
-          }
+          headers: (() => {
+            const headers: Record<string, string> = {
+              "Accept": "application/json"
+            };
+            
+            // Try both authentication methods
+            if (instance.apiKey.startsWith('Bearer ') || instance.apiKey.startsWith('token ')) {
+              headers["Authorization"] = instance.apiKey;
+            } else {
+              headers["X-N8N-API-KEY"] = instance.apiKey;
+            }
+            
+            return headers;
+          })()
         });
         
         if (!workflowDetailsResponse.ok) {
@@ -347,10 +636,20 @@ export default function Command() {
       const activationEndpoint = workflow.active ? 'deactivate' : 'activate';
       const response = await fetch(`${API_ENDPOINTS.workflows}/${workflow.id}/${activationEndpoint}`, {
         method: 'POST',
-        headers: {
-          "X-N8N-API-KEY": instance.apiKey,
-          "Accept": "application/json"
-        }
+        headers: (() => {
+          const headers: Record<string, string> = {
+            "Accept": "application/json"
+          };
+          
+          // Try both authentication methods
+          if (instance.apiKey.startsWith('Bearer ') || instance.apiKey.startsWith('token ')) {
+            headers["Authorization"] = instance.apiKey;
+          } else {
+            headers["X-N8N-API-KEY"] = instance.apiKey;
+          }
+          
+          return headers;
+        })()
       });
       
       if (!response.ok) {
@@ -584,14 +883,33 @@ export default function Command() {
     return (
       <List>
         <List.EmptyView
-          icon={Icon.ExclamationMark}
-          title="No n8n instances configured"
-          description="Use the 'Manage n8n Instances' command to add your first instance"
+          title="No n8n Instances Found"
+          description="Add an n8n instance in the extension settings to get started."
+          icon={Icon.XMarkCircle}
           actions={
             <ActionPanel>
-              <Action.Open
-                title="Configure Instances"
-                target="raycast://extensions/designlogicsolutions/n8n/manage-instances"
+              <Action.Push
+                title="Add n8n Instance"
+                target={
+                  <List.Item
+                    title="Add n8n Instance"
+                    icon={Icon.Plus}
+                    actions={
+                      <ActionPanel>
+                        <Action
+                          title="Open Manage Instances"
+                          onAction={() => {
+                            showToast({
+                              style: Toast.Style.Success,
+                              title: "Please use Manage Instances command",
+                              message: "Use the 'Manage n8n Instances' command from Raycast"
+                            });
+                          }}
+                        />
+                      </ActionPanel>
+                    }
+                  />
+                }
               />
             </ActionPanel>
           }
@@ -599,12 +917,47 @@ export default function Command() {
       </List>
     );
   }
+  
+  // Get unique instances
+  const uniqueInstances = Array.from(
+    new Map(
+      items.map(item => [
+        item.instanceId,
+        {
+          id: item.instanceId,
+          name: item.instanceName,
+          color: item.instanceColor,
+          status: instanceStatuses[item.instanceId]
+        }
+      ])
+    ).values()
+  );
 
   return (
     <List
       searchBarPlaceholder="Search workflows by name, tags, or instance..."
-      isLoading={isLoading}
+      isLoading={isLoading || isApiSearching || isFuzzySearching}
       filtering={true}
+      onSearchTextChange={(text) => {
+        // Clear all search-related states in the correct order
+        setSearchText(text);  // Set new search text first
+        
+        if (!text.trim()) {
+          // If clearing search, reset everything
+          setIsApiSearching(false);
+          setIsFuzzySearching(false);
+          setFuzzySearchResults([]);
+          setApiSearchResults([]);
+          return;
+        }
+        
+        // For new search terms, just reset the search states
+        setIsApiSearching(false);
+        setIsFuzzySearching(false);
+        
+        // Don't clear results immediately to avoid UI flicker
+        // They'll be replaced when new results come in
+      }}
       searchBarAccessory={
         <List.Dropdown
           tooltip="Filter by Instance"
@@ -618,114 +971,120 @@ export default function Command() {
               title={`${instance.name} ${getInstanceStatusIcon(instance.status, instance.id)}`}
               value={instance.id}
               icon={{ source: Icon.Circle, tintColor: instance.color as Color }}
-              tooltip={instance.status?.error ? instance.status.error : (instance.status?.isActive ? "Instance is online" : "Instance is offline or unreachable")}
+              tooltip={instance.status?.error || (instance.status?.isActive ? "Instance is online" : "Instance is offline")}
             />
           ))}
         </List.Dropdown>
       }
     >
-      <List.Section title="Tags" subtitle={selectedTag || "All"}>
-        {!selectedTag && (
+      {/* Workflows Section */}
+      <List.Section title="Workflows" subtitle={getWorkflowSectionSubtitle()}>
+        {isApiSearching ? (
           <List.Item
-            title="All Tags"
-            icon={Icon.Tag}
-            actions={
-              <ActionPanel>
-                <Action
-                  title="Refresh All Workflows"
-                  icon={Icon.RotateClockwise}
-                  onAction={() => fetchData(true)}
-                  shortcut={{ modifiers: ["cmd"], key: "r" }}
-                />
-              </ActionPanel>
-            }
+            title="Searching across instances..."
+            icon={Icon.MagnifyingGlass}
           />
+        ) : isFuzzySearching ? (
+          <List.Item
+            title="Performing fuzzy search..."
+            icon={Icon.MagnifyingGlass}
+          />
+        ) : (
+          // Order of precedence: API results > fuzzy results > filtered items
+          (apiSearchResults.length > 0 ? apiSearchResults :
+           fuzzySearchResults.length > 0 ? fuzzySearchResults :
+           filterItems(items, searchText, selectedTag, selectedInstance)
+          ).map(renderWorkflowItem)
         )}
-        {availableTags.map((tag) => (
-          <List.Item
-            key={tag}
-            title={tag}
-            icon={Icon.Tag}
-            actions={
-              <ActionPanel>
-                <Action
-                  title={selectedTag === tag ? "Clear Tag Filter" : "Filter by Tag"}
-                  onAction={() => handleTagChange(selectedTag === tag ? null : tag)}
-                />
-              </ActionPanel>
-            }
-          />
-        ))}
       </List.Section>
 
-      <List.Section title="Workflows" subtitle={items.length.toString()}>
-        {filterItems(items, "", selectedTag, selectedInstance).map((item) => (
-          <List.Item
-            key={item.uniqueKey}
-            icon={{ source: Icon.Circle, tintColor: item.instanceColor as Color }}
-            title={item.title}
-            subtitle={item.subtitle}
-            accessories={[
-              { icon: Icon.Hashtag, text: item.accessory },
-              { 
-                icon: item.active ? Icon.Circle : (item.hasTrigger === false ? Icon.ExclamationMark : Icon.MinusCircle), 
-                text: item.active ? "Active" : (item.hasTrigger === false ? "No Trigger" : "Inactive"), 
-                tooltip: item.hasTrigger === false 
-                  ? "This workflow cannot be activated because it does not have a trigger node" 
-                  : `Workflow is ${item.active ? "active" : "inactive"}`
-              },
-              { text: `${item.instanceName} ${getInstanceStatusIcon(instanceStatuses[item.instanceId], item.instanceId)}` }
-            ]}
-            actions={
-              <ActionPanel>
-                <Action.OpenInBrowser 
-                  url={getApiEndpoints({ 
-                    id: item.instanceId,
-                    name: item.instanceName,
-                    baseUrl: instances.find(i => i.id === item.instanceId)?.baseUrl || "",
-                    apiKey: "" 
-                  }).workflowUrl(item.id)} 
-                />
-                {item.hasTrigger === false && !item.active ? (
-                  <Action
-                    title="Cannot Activate (No Trigger Node)"
-                    icon={Icon.ExclamationMark}
-                    onAction={() => {
-                      showToast({
-                        style: Toast.Style.Failure,
-                        title: "Cannot Activate Workflow",
-                        message: "This workflow requires a trigger node like Webhook or Cron to be activated."
-                      });
-                    }}
-                  />
-                ) : (
-                  <Action
-                    title={item.active ? "Deactivate Workflow" : "Activate Workflow"}
-                    icon={item.active ? Icon.MinusCircle : Icon.Circle}
-                    onAction={() => toggleWorkflowStatus(item)}
-                    shortcut={{ modifiers: ["cmd"], key: "t" }}
-                  />
-                )}
-                <Action.CopyToClipboard
-                  title="Copy Workflow URL"
-                  content={getApiEndpoints({
-                    id: item.instanceId,
-                    name: item.instanceName,
-                    baseUrl: instances.find(i => i.id === item.instanceId)?.baseUrl || "",
-                    apiKey: ""
-                  }).workflowUrl(item.id)}
-                />
-                <Action
-                  title="Refresh Workflows"
-                  icon={Icon.RotateClockwise}
-                  onAction={() => fetchData(true)}
-                  shortcut={{ modifiers: ["cmd"], key: "r" }}
-                />
-              </ActionPanel>
-            }
-          />
-        ))}
-      </List.Section>
+      {/* EmptyView - show only when no results found */}
+      {searchText && !isApiSearching && !isFuzzySearching && 
+       filterItems(items, searchText, selectedTag, selectedInstance).length === 0 && 
+       apiSearchResults.length === 0 && 
+       fuzzySearchResults.length === 0 && (
+        <List.EmptyView
+          icon={Icon.MagnifyingGlass}
+          title="No matching workflows found locally"
+          description="Try fuzzy search first, then API search, or refresh all data."
+          actions={
+            <ActionPanel>
+              <Action
+                title="Try Fuzzy Search"
+                icon={Icon.MagnifyingGlass}
+                shortcut={{ modifiers: [], key: "return" }}
+                onAction={async () => {
+                  if (!searchText.trim()) {
+                    await showToast({
+                      style: Toast.Style.Failure,
+                      title: "Please enter a search term",
+                      message: "Enter text to search for workflows"
+                    });
+                    return;
+                  }
+                  
+                  try {
+                    setFuzzySearchResults([]);
+                    setIsFuzzySearching(true);
+                    
+                    await showToast({
+                      style: Toast.Style.Animated,
+                      title: "Performing fuzzy search",
+                      message: "Searching with smart matching algorithms..."
+                    });
+                    
+                    // Start search immediately to reduce latency
+                    // Make the fuzzy search more lenient by lowering the threshold
+                    const results = performFuzzySearch(items, searchText, { threshold: 0.4 });
+                    
+                    // Small delay for UI feedback only
+                    setTimeout(async () => {
+                      setFuzzySearchResults(results);
+                      setIsFuzzySearching(false);
+                      
+                      if (results.length > 0) {
+                        await showToast({
+                          style: Toast.Style.Success,
+                          title: "Fuzzy search results found",
+                          message: `Found ${results.length} workflows matching "${searchText}"`
+                        });
+                      } else {
+                        await showToast({
+                          style: Toast.Style.Animated,
+                          title: "No fuzzy matches found",
+                          message: "Trying API search..."
+                        });
+                        
+                        // Automatically try API search if no fuzzy results found
+                        await searchWorkflowsViaAPI(searchText);
+                      }
+                    }, 100);
+                  } catch (error) {
+                    setIsFuzzySearching(false);
+                    await showToast({
+                      style: Toast.Style.Failure,
+                      title: "Fuzzy search failed",
+                      message: error instanceof Error ? error.message : "Unknown error occurred"
+                    });
+                  }
+                }}
+              />
+              <Action
+                title="Search via API"
+                icon={Icon.Globe}
+                shortcut={{ modifiers: ["opt"], key: "return" }}
+                onAction={() => searchWorkflowsViaAPI(searchText)}
+              />
+              <Action
+                title="Refresh All Data"
+                icon={Icon.RotateClockwise}
+                shortcut={{ modifiers: ["cmd"], key: "r" }}
+                onAction={() => fetchData(true)}
+              />
+            </ActionPanel>
+          }
+        />
+      )}
     </List>
   );
 }

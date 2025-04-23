@@ -14,7 +14,7 @@ import { useState, useEffect } from "react";
 import { StoredInstance } from "./types";
 import { generateInstanceId } from "./utils";
 import { testConnection } from "./utils/connection";
-import { ColorPickerField } from "./components/ColorPicker";
+import { ColorPicker } from "./components/ColorPicker";
 import { getInstanceStatus, updateInstanceStatus, getStatusIcon, startStatusAutoRefresh } from "./utils/instanceStatus";
 
 const STORAGE_KEY = "n8n_instances";
@@ -28,12 +28,13 @@ function AddInstanceForm() {
   async function handleSubmit(values: FormValues) {
     try {
       setIsLoading(true);
+      // Include color from state
       const instance: StoredInstance = {
         id: generateInstanceId(values.baseUrl),
         name: values.name,
         baseUrl: values.baseUrl.trim(),
         apiKey: values.apiKey.trim(),
-        color: values.color
+        color: color // Use color from state instead of form values
       };
 
       // Get existing instances
@@ -125,11 +126,18 @@ function AddInstanceForm() {
         id="apiKey"
         title="API Key"
         placeholder="Enter your n8n API key"
-        required
       />
-      <ColorPickerField
+      <ColorPicker
         defaultColor={color}
         onChange={setColor}
+      />
+      {/* Hidden field to include color in form values */}
+      <Form.TextField
+        id="color"
+        title="Color"
+        value={color}
+        onChange={setColor}
+        hidden
       />
       {testResult && (
         <Form.Description
@@ -152,6 +160,7 @@ function EditInstanceForm({ instance }: { instance: StoredInstance }) {
   const { pop } = useNavigation();
   const [color, setColor] = useState(instance.color || "#FF6B6B");
   const [isLoading, setIsLoading] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   async function handleSubmit(values: FormValues) {
     try {
@@ -161,7 +170,7 @@ function EditInstanceForm({ instance }: { instance: StoredInstance }) {
         name: values.name,
         baseUrl: values.baseUrl.trim(),
         apiKey: values.apiKey.trim(),
-        color: values.color
+        color: color // Use color from state instead of form values
       };
 
       // Get existing instances
@@ -170,6 +179,11 @@ function EditInstanceForm({ instance }: { instance: StoredInstance }) {
       
       // Test connection before saving
       const status = await updateInstanceStatus(instance.id, updatedInstance.baseUrl, updatedInstance.apiKey);
+      setTestResult({
+        success: status.isActive,
+        message: status.error || "Connection successful"
+      });
+      
       if (!status.isActive) {
         const shouldProceed = await showToast({
           style: Toast.Style.Failure,
@@ -230,6 +244,25 @@ function EditInstanceForm({ instance }: { instance: StoredInstance }) {
       actions={
         <ActionPanel>
           <Action.SubmitForm onSubmit={handleSubmit} />
+          <Action
+            title="Test Connection"
+            icon={Icon.Network}
+            onAction={(e) => {
+              const form = e.target as HTMLFormElement;
+              const formData = new FormData(form);
+              testConnection(
+                formData.get("baseUrl") as string,
+                formData.get("apiKey") as string
+              ).then(result => {
+                setTestResult(result);
+                showToast({
+                  style: result.success ? Toast.Style.Success : Toast.Style.Failure,
+                  title: result.success ? "Connection Test Successful" : "Connection Test Failed",
+                  message: result.message
+                });
+              });
+            }}
+          />
         </ActionPanel>
       }
     >
@@ -251,10 +284,24 @@ function EditInstanceForm({ instance }: { instance: StoredInstance }) {
         defaultValue={instance.apiKey}
         required
       />
-      <ColorPickerField
+      <ColorPicker
         defaultColor={color}
         onChange={setColor}
       />
+      {/* Hidden field to include color in form values */}
+      <Form.TextField
+        id="color"
+        title="Color"
+        value={color}
+        onChange={setColor}
+        hidden
+      />
+      {testResult && (
+        <Form.Description
+          title={testResult.success ? "Connection Status: Success" : "Connection Status: Failed"}
+          text={testResult.message}
+        />
+      )}
     </Form>
   );
 }
