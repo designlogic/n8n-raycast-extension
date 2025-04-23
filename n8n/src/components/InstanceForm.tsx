@@ -1,6 +1,6 @@
 import { Form, ActionPanel, Action, Icon, useNavigation, showToast, Toast } from "@raycast/api";
 import { useState } from "react";
-import { ColorPicker } from "./ColorPicker";
+import { ColorPicker } from "../components/ColorPicker";
 import { testConnection } from "../utils/connection";
 import { StoredInstance } from "../types";
 
@@ -36,21 +36,6 @@ export function InstanceForm({ instance, onSubmit, title }: InstanceFormProps) {
         <ActionPanel>
           <Action.SubmitForm 
             onSubmit={(values) => onSubmit({ ...values, color })} 
-          />
-          <Action
-            title="Pick Color"
-            icon={Icon.Swatch}
-            onAction={() => {
-              push(
-                <ColorPicker
-                  defaultColor={color}
-                  onColorSelect={(newColor) => {
-                    setColor(newColor);
-                    push(<InstanceForm instance={instance} onSubmit={onSubmit} title={title} />);
-                  }}
-                />
-              );
-            }}
           />
           <Action
             title="Test Connection"
@@ -90,14 +75,12 @@ export function InstanceForm({ instance, onSubmit, title }: InstanceFormProps) {
         defaultValue={instance?.apiKey}
         required
       />
-      <Form.Description
-        title="Instance Color"
-        text={`Current color: ${color}`}
+      
+      <ColorPicker 
+        defaultColor={color} 
+        onChange={setColor} 
       />
-      <Form.Description
-        title="💡 Tip"
-        text="Use the 'Pick Color' action in the top right to select a color"
-      />
+      
       {testResult && (
         <Form.Description
           title={testResult.success ? "Connection Status: Success" : "Connection Status: Failed"}

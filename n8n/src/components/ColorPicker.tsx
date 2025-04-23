@@ -18,7 +18,7 @@ const COLORS = [
   { name: "Gray", value: "#808080" }
 ];
 
-export function ColorPickerField({ defaultColor = "#FF6B6B", onChange }: ColorPickerProps) {
+export function ColorPicker({ defaultColor = "#FF6B6B", onChange }: ColorPickerProps) {
   return (
     <Form.Dropdown
       id="color"

@@ -26,6 +26,7 @@ export function InstanceSelector({
 }: InstanceSelectorProps) {
   const [instances, setInstances] = useState<StoredInstance[]>([]);
   const [instanceStatuses, setInstanceStatuses] = useState<Record<string, { isActive: boolean; error?: string }>>({});
+  const [selectedInstance, setSelectedInstance] = useState<string>("");
 
   useEffect(() => {
     async function loadInstances() {
@@ -52,6 +53,21 @@ export function InstanceSelector({
     loadInstances();
   }, []);
 
+  // Set initial selected instance when instances load or selectedInstanceId changes
+  useEffect(() => {
+    if (instances.length > 0) {
+      // If selectedInstanceId is provided, use it
+      if (selectedInstanceId) {
+        setSelectedInstance(selectedInstanceId);
+      } 
+      // Otherwise, if there's only one instance, select it automatically
+      else if (instances.length === 1) {
+        setSelectedInstance(instances[0].id);
+      }
+      // If there are multiple instances and none selected, keep the empty state
+    }
+  }, [instances, selectedInstanceId]);
+
   if (instances.length === 0) {
     return (
       <Form.Description
@@ -66,11 +82,12 @@ export function InstanceSelector({
       id="instance"
       title={dropdownTitle}
       placeholder={dropdownPlaceholder}
-      value={selectedInstanceId || (instances.length === 1 ? instances[0].id : undefined)}
+      value={selectedInstance}
       onChange={(newInstanceId) => {
-        const selectedInstance = instances.find(i => i.id === newInstanceId);
-        if (selectedInstance) {
-          onInstanceSelect(selectedInstance);
+        setSelectedInstance(newInstanceId);
+        const instance = instances.find(i => i.id === newInstanceId);
+        if (instance) {
+          onInstanceSelect(instance);
         }
       }}
     >
