@@ -1,0 +1,40 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base",
+    ":semanticCommits",
+    ":semanticPrefixFix"
+  ],
+  "packageRules": [
+    {
+      "matchDepTypes": ["dependencies"],
+      "matchPackagePatterns": ["^@raycast"],
+      "groupName": "raycast packages",
+      "schedule": ["every weekend"],
+      "labels": ["raycast-deps"]
+    },
+    {
+      "matchDepTypes": ["devDependencies"],
+      "groupName": "development dependencies",
+      "schedule": ["every weekend"],
+      "labels": ["dev-deps"],
+      "prPriority": 1
+    }
+  ],
+  "vulnerabilityAlerts": {
+    "labels": ["security"],
+    "prPriority": 0
+  },
+  "stabilityDays": 3,
+  "prCreation": "not-pending",
+  "dependencyDashboard": true,
+  "automerge": true,
+  "automergeType": "pr",
+  "platformAutomerge": true,
+  "major": {
+    "automerge": false
+  },
+  "rangeStrategy": "bump",
+  "labels": ["dependencies"],
+  "ignorePaths": ["**/node_modules/**"]
+}
