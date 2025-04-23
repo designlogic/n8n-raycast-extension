@@ -13,53 +13,18 @@
   "permissions": [
     "clipboard-read"
   ],
-  "preferences": [
-    {
-      "name": "apiKey",
-      "type": "password",
-      "required": true,
-      "title": "n8n API Key",
-      "description": "Your n8n API key for authentication",
-      "placeholder": "Enter your n8n API key"
-    },
-    {
-      "name": "baseUrl",
-      "type": "textfield",
-      "required": true,
-      "title": "n8n Base URL",
-      "description": "Your n8n instance URL (e.g., https://n8n.example.com)",
-      "placeholder": "https://n8n.example.com"
-    }
-  ],
   "commands": [
     {
-      "name": "convert-json-mapping",
-      "title": "Convert JSON to Manual Mapping",
-      "description": "Convert Set node JSON output format to Manual Mapping assignments",
+      "name": "manage-instances",
+      "title": "Manage n8n Instances",
+      "description": "Add, edit, or remove n8n instances",
       "mode": "view",
       "keywords": [
         "n8n",
-        "json",
-        "set",
-        "node",
-        "convert",
-        "manual",
-        "mapping"
-      ]
-    },
-    {
-      "name": "convert-manual-mapping",
-      "title": "Convert Manual Mapping to JSON",
-      "description": "Convert Set node Manual Mapping assignments to JSON output format",
-      "mode": "view",
-      "keywords": [
-        "n8n",
-        "json",
-        "set",
-        "node",
-        "convert",
-        "manual",
-        "mapping"
+        "instance",
+        "manage",
+        "settings",
+        "configuration"
       ]
     },
     {
@@ -121,12 +86,45 @@
         "convert",
         "http"
       ]
+    },
+    {
+      "name": "convert-json-mapping",
+      "title": "Convert JSON to Manual Mapping",
+      "description": "Convert Set node JSON output format to Manual Mapping assignments",
+      "mode": "view",
+      "keywords": [
+        "n8n",
+        "json",
+        "set",
+        "node",
+        "convert",
+        "manual",
+        "mapping"
+      ]
+    },
+    {
+      "name": "convert-manual-mapping",
+      "title": "Convert Manual Mapping to JSON",
+      "description": "Convert Set node Manual Mapping assignments to JSON output format",
+      "mode": "view",
+      "keywords": [
+        "n8n",
+        "json",
+        "set",
+        "node",
+        "convert",
+        "manual",
+        "mapping"
+      ]
     }
   ],
   "dependencies": {
-    "@raycast/api": "^1.96.0",
-    "@raycast/utils": "^1.19.1",
+    "@raycast/api": "^1.59.0",
+    "@raycast/utils": "^1.12.5",
     "change-case": "^5.4.4",
+    "cross-spawn": "^7.0.6",
+    "fuse.js": "^7.1.0",
+    "got": "^11.8.6",
     "node-fetch": "^3.3.2",
     "parse-curl": "^0.2.6",
     "uuid": "^9.0.1"
@@ -142,9 +140,10 @@
     "eslint": "^8.57.0",
     "ip": "^2.0.1",
     "prettier": "^3.3.3",
-    "react-devtools": "^6.1.1",
+    "react-devtools": "^1.0.5",
+    "react-devtools-core": "^4.28.5",
     "rimraf": "^6.0.1",
-    "tough-cookie": "^5.1.2",
+    "tough-cookie": "^4.1.4",
     "typescript": "^5.4.5"
   },
   "scripts": {
