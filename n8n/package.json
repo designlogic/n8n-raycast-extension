@@ -124,22 +124,27 @@
     }
   ],
   "dependencies": {
-    "@raycast/api": "^1.91.2",
-    "@raycast/utils": "^1.17.0",
+    "@raycast/api": "^1.96.0",
+    "@raycast/utils": "^1.19.1",
     "change-case": "^5.4.4",
     "node-fetch": "^3.3.2",
     "parse-curl": "^0.2.6",
     "uuid": "^9.0.1"
   },
   "devDependencies": {
+    "@electron/get": "^4.0.0",
     "@raycast/eslint-config": "^1.0.11",
     "@types/change-case": "^2.3.5",
     "@types/node": "20.8.10",
     "@types/react": "18.3.3",
     "@types/uuid": "^9.0.8",
+    "electron": "^35.2.0",
     "eslint": "^8.57.0",
+    "ip": "^2.0.1",
     "prettier": "^3.3.3",
-    "react-devtools": "^5.2.0",
+    "react-devtools": "^6.1.1",
+    "rimraf": "^6.0.1",
+    "tough-cookie": "^5.1.2",
     "typescript": "^5.4.5"
   },
   "scripts": {
